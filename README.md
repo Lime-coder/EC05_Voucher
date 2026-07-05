@@ -1,5 +1,11 @@
 # VoucherHub - E-Commerce Voucher Platform
 
+## 👥 Contributors (FIT HCMUS)
+* **Nguyễn Hoàng Liêm** (Leader)
+* **Thạch Thị Sinh**
+* **Phạm Thúy Quy**
+* **Nguyễn Ngọc Như Quỳnh**
+
 Dự án này được thiết lập theo kiến trúc **Monorepo** (quản lý bằng `pnpm`). Nghĩa là toàn bộ code Frontend, Backend và các gói thư viện dùng chung (Packages) đều nằm trong một repository duy nhất.
 
 Để đảm bảo source code đồng nhất, dễ maintain và quan trọng nhất là **không bị conflict Git** khi 4 người cùng làm, mọi người bắt buộc phải đọc và tuân thủ các quy chuẩn dưới đây trước khi code.

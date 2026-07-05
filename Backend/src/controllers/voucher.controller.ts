@@ -5,7 +5,7 @@ import { logActivity, deleteImageFile } from "./admin";
 import fs from "fs";
 import { LogService } from "../services/log.service";
 import path from "path";
-import { VOUCHER_STATUS } from "../constants";
+import { VOUCHER_STATUS, ACCOUNT_STATUS } from "../constants";
 
 /**
  * Controller handles the HTTP Request/Response flow.
@@ -23,6 +23,7 @@ export const getAllVouchers = async (
     const vouchers = await prisma.voucher.findMany({
       where: {
         TrangThaiVoucher: VOUCHER_STATUS.ACTIVE,
+        DoiTac: { TrangThai: ACCOUNT_STATUS.ACTIVE },
 
         ...(search
           ? {
@@ -144,6 +145,7 @@ export const getVoucherById = async (
         VoucherID: Number(id),
 
         TrangThaiVoucher: VOUCHER_STATUS.ACTIVE,
+        DoiTac: { TrangThai: ACCOUNT_STATUS.ACTIVE },
       },
 
       include: {
@@ -661,6 +663,7 @@ export const getCategories = async (
             Vouchers: {
               where: {
                 TrangThaiVoucher: VOUCHER_STATUS.ACTIVE,
+                DoiTac: { TrangThai: ACCOUNT_STATUS.ACTIVE },
               },
             },
           },
@@ -730,6 +733,7 @@ export const searchVouchers = async (
       where: {
         // Chỉ lấy voucher ACTIVE
         TrangThaiVoucher: VOUCHER_STATUS.ACTIVE,
+        DoiTac: { TrangThai: ACCOUNT_STATUS.ACTIVE },
 
         // OR:
         // chỉ cần match 1 điều kiện
