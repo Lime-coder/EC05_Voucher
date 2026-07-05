@@ -56,6 +56,8 @@ export interface RecentVerification {
   time: string;
   status: 'verified' | 'rejected';
   branch?: string;
+  orderId?: number;
+  customerName?: string;
 }
 
 export interface Branch {

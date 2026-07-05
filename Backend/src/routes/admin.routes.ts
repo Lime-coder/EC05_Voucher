@@ -27,7 +27,7 @@ router.patch('/users/:id/toggle', toggleUserActive);
 router.get('/vouchers', getAdminVouchers);
 router.patch('/vouchers/:id/approve', approveVoucher);
 router.patch('/vouchers/:id/reject', rejectVoucher);
-router.patch('/vouchers/:id/suspend', suspendVoucher);   // ← route mới
+router.patch('/vouchers/:id/suspend', suspendVoucher);
 router.patch('/vouchers/:id/restore', restoreVoucher);
 
 

@@ -295,7 +295,12 @@ export class VoucherService {
         ChiNhanh: true,
         ChiTietDonHang: {
           include: {
-            Voucher: true
+            Voucher: true,
+            DonHang: {
+              include: {
+                TaiKhoan: true
+              }
+            }
           }
         }
       } as any
@@ -306,7 +311,9 @@ export class VoucherService {
       voucherName: mv.ChiTietDonHang?.Voucher?.TenVoucher || 'Không xác định',
       time: mv.ThoiDiemSuDung?.toISOString(),
       status: 'verified', // If it's in this list, it was successfully verified and used
-      branch: (mv as any).ChiNhanh?.TenChiNhanh || 'Tất cả chi nhánh'
+      branch: (mv as any).ChiNhanh?.TenChiNhanh || 'Tất cả chi nhánh',
+      orderId: mv.ChiTietDonHang?.DonHang?.MaDonHang,
+      customerName: mv.ChiTietDonHang?.DonHang?.TaiKhoan?.HoTenNguoiDung || mv.ChiTietDonHang?.DonHang?.TaiKhoan?.HoTen || mv.ChiTietDonHang?.DonHang?.TaiKhoan?.TenDangNhap || 'Khách hàng'
     }));
   }
 }

@@ -5,6 +5,57 @@ import { VOUCHER_STATUS, PAYMENT_STATUS } from '../constants';
 
 export class PartnerService {
   /**
+   * Lấy danh sách giao dịch khách hàng mua voucher của Đối tác
+   */
+  static async getPurchases(partnerId: number) {
+    const items = await prisma.chiTietDonHang.findMany({
+      where: {
+        Voucher: { MaDoiTac: partnerId }
+      },
+      include: {
+        DonHang: {
+          include: {
+            TaiKhoan: {
+              include: {
+                KhachHang: true
+              }
+            }
+          }
+        },
+        Voucher: true
+      },
+      orderBy: {
+        DonHang: {
+          MaDonHang: 'desc'
+        }
+      }
+    });
+
+    return items.map((item: any) => {
+      let status = 'Pending';
+      if (item.DonHang?.TrangThaiThanhToan === PAYMENT_STATUS.PAID || item.DonHang?.TrangThaiThanhToan === 'Đã thanh toán') {
+        status = 'Paid';
+      } else if (item.DonHang?.TrangThaiDonHang === 'Đã hủy' || item.DonHang?.TrangThaiDonHang === 'Huỷ bỏ') {
+        status = 'Cancelled';
+      }
+      
+      return {
+        id: `ORD-${item.DonHang?.MaDonHang}-${item.MaCTDonHang}`,
+        orderId: item.DonHang?.MaDonHang,
+        customerName: item.DonHang?.TaiKhoan?.HoTenNguoiDung || 'Khách vãng lai',
+        customerPhone: item.DonHang?.TaiKhoan?.KhachHang?.SDT_KH || 'N/A',
+        customerEmail: item.DonHang?.TaiKhoan?.Email || '',
+        voucherName: item.Voucher?.TenVoucher || '',
+        quantity: item.SoLuongMua,
+        totalAmount: Number(item.ThanhTien || 0),
+        paymentMethod: item.DonHang?.PhuongThucThanhToan || 'N/A',
+        status: status,
+        date: item.DonHang?.ThoiGianThanhToan || new Date().toISOString()
+      };
+    });
+  }
+
+  /**
    * Lấy thông tin hồ sơ Đối tác
    */
   static async getProfile(partnerId: number) {

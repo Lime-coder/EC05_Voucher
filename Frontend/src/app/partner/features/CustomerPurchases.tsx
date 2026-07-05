@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ShoppingCart, Search, CreditCard, Clock, Calendar, CheckCircle, XCircle } from 'lucide-react';
 import { useLanguage } from '../../shared/contexts/LanguageContext';
 import {
@@ -11,62 +11,57 @@ import {
   TableBody,
   TableCell,
 } from '@voucherhub/ui';
+import api from '../../../lib/api';
+
+interface Purchase {
+  id: string;
+  orderId: number;
+  customerName: string;
+  customerPhone: string;
+  customerEmail: string;
+  voucherName: string;
+  quantity: number;
+  totalAmount: number;
+  paymentMethod: string;
+  status: string;
+  date: string;
+}
 
 export default function CustomerPurchases() {
   const { language } = useLanguage();
   const tText = (en: string, vi: string) => (language === 'vi' ? vi : en);
   
   const [searchQuery, setSearchQuery] = useState('');
+  const [purchases, setPurchases] = useState<Purchase[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  // Mock data for customer purchases
-  const mockPurchases = [
-    {
-      id: 'ORD-1001',
-      customerName: 'Nguyen Van A',
-      customerPhone: '0901234567',
-      voucherName: 'Giảm 50% Buffet Trưa',
-      quantity: 2,
-      totalAmount: 500000,
-      paymentMethod: 'Credit Card',
-      status: 'Paid',
-      date: '2026-06-10T10:30:00Z'
-    },
-    {
-      id: 'ORD-1002',
-      customerName: 'Tran Thi B',
-      customerPhone: '0907654321',
-      voucherName: 'Voucher Spa 500k',
-      quantity: 1,
-      totalAmount: 350000,
-      paymentMethod: 'MoMo',
-      status: 'Paid',
-      date: '2026-06-09T14:15:00Z'
-    },
-    {
-      id: 'ORD-1003',
-      customerName: 'Le Van C',
-      customerPhone: '0901122334',
-      voucherName: 'Giảm 20% Cà phê',
-      quantity: 3,
-      totalAmount: 120000,
-      paymentMethod: 'ZaloPay',
-      status: 'Pending',
-      date: '2026-06-10T08:00:00Z'
-    },
-    {
-      id: 'ORD-1004',
-      customerName: 'Pham Thu D',
-      customerPhone: '0912345678',
-      voucherName: 'Vé xem phim cuối tuần',
-      quantity: 2,
-      totalAmount: 200000,
-      paymentMethod: 'Credit Card',
-      status: 'Cancelled',
-      date: '2026-06-08T19:45:00Z'
-    }
-  ];
+  const selectedPartnerId = localStorage.getItem('partnerId') || '1';
 
-  const filteredPurchases = mockPurchases.filter(p => 
+  useEffect(() => {
+    if (!selectedPartnerId) return;
+    
+    let isActive = true;
+    setLoading(true);
+    
+    api.get(`/partners/${selectedPartnerId}/purchases`)
+      .then((res: any) => {
+        if (isActive && Array.isArray(res.data)) {
+          setPurchases(res.data);
+        }
+      })
+      .catch((err: any) => {
+        console.error('Fetch customer purchases error:', err);
+      })
+      .finally(() => {
+        if (isActive) setLoading(false);
+      });
+      
+    return () => {
+      isActive = false;
+    };
+  }, [selectedPartnerId]);
+
+  const filteredPurchases = purchases.filter(p => 
     p.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
     p.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
     p.customerPhone.includes(searchQuery) ||
@@ -109,7 +104,16 @@ export default function CustomerPurchases() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredPurchases.map((p) => (
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center py-8">
+                    <div className="flex flex-col items-center justify-center space-y-4">
+                      <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+                      <p className="text-sm text-gray-500">{tText('Loading purchases...', 'Đang tải dữ liệu...')}</p>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : filteredPurchases.map((p) => (
                 <TableRow key={p.id}>
                   <TableCell>
                     <div className="space-y-1">
@@ -157,7 +161,7 @@ export default function CustomerPurchases() {
                   </TableCell>
                 </TableRow>
               ))}
-              {filteredPurchases.length === 0 && (
+              {!loading && filteredPurchases.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={5} className="text-center py-8 text-gray-500">
                     <ShoppingCart className="w-8 h-8 mx-auto text-gray-300 mb-2" />

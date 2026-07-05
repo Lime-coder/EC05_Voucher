@@ -34,9 +34,9 @@ export function ArticleSection() {
       .then((res) => res.json())
       .then((data) => {
         if (Array.isArray(data)) {
-          // Filter published articles (TrangThai === 'Đã xuất bản') and sort by date descending
+          // Filter published articles and sort by date descending
           const published = data
-            .filter((item: ArticleItem) => item.TrangThai === 'Đã xuất bản')
+            .filter((item: ArticleItem) => item.TrangThai === 'Đã xuất bản' || item.TrangThai === 'Hiển thị')
             .sort((a, b) => {
               const dateA = a.NgayTao ? new Date(a.NgayTao).getTime() : 0;
               const dateB = b.NgayTao ? new Date(b.NgayTao).getTime() : 0;

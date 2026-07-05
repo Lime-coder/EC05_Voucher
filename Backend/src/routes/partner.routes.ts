@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { requireAuth, requireRole } from '../middlewares/auth.middleware';
-import { getPartnerStatistics, getPartnerReports, getPartnerProfile, updatePartnerProfile, uploadAvatar, changePartnerPassword, updateRevenueTarget, createStaff, getStaff } from '../controllers/partner.controller';
+import { getPartnerStatistics, getPartnerReports, getPartnerProfile, updatePartnerProfile, uploadAvatar, changePartnerPassword, updateRevenueTarget, createStaff, getStaff, getPurchases } from '../controllers/partner.controller';
 import { getPartnerBranchStats } from '../controllers/admin';
 import { uploadAvatarMiddleware } from '../middlewares/upload.middleware';
 
@@ -23,5 +23,6 @@ router.put('/:id/revenue-target', updateRevenueTarget);
 router.get('/:id/staff', getStaff);
 router.post('/:id/staff', createStaff);
 router.get('/:partnerId/branch-stats', getPartnerBranchStats);
+router.get('/:id/purchases', getPurchases);
 
 export default router;

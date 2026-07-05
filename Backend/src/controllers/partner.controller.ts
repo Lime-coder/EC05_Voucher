@@ -2,6 +2,23 @@ import { Request, Response } from 'express';
 import { PartnerService } from '../services/partner.service';
 import { LogService } from '../services/log.service';
 
+export const getPurchases = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const partnerId = parseInt(id, 10);
+
+    if (isNaN(partnerId)) {
+      return res.status(400).json({ message: "Invalid partner ID" });
+    }
+
+    const purchases = await PartnerService.getPurchases(partnerId);
+    res.status(200).json(purchases);
+  } catch (error) {
+    console.error('Server error:', error);
+    res.status(500).json({ errorCode: 'ERR_500', message: 'An unknown error occurred.', details: error instanceof Error ? error.message : String(error) });
+  }
+};
+
 export const getPartnerStatistics = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;

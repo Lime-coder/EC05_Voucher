@@ -352,11 +352,16 @@ export function ContentManagement() {
 
   const handleEditArticle = (art: any) => {
     setCurrentArticle(art);
+
+    // Normalize DB status to match dropdown option values
+    let normalizedStatus = art.TrangThai || 'Nháp';
+    if (normalizedStatus === 'Hiển thị') normalizedStatus = 'Đã xuất bản';
+
     setArticleForm({
       TieuDe: art.TieuDe || '',
       NoiDung: art.NoiDung || '',
       TacGia: art.TacGia || 'Admin',
-      TrangThai: art.TrangThai || 'Nháp'
+      TrangThai: normalizedStatus
     });
     setShowArticleModal(true);
   };
@@ -383,7 +388,8 @@ export function ContentManagement() {
 
   const handleToggleArticleStatus = async (article: any) => {
     try {
-      const nextStatus = article.TrangThai === 'Đã xuất bản' ? 'Ẩn' : 'Đã xuất bản';
+      const isPublished = article.TrangThai === 'Đã xuất bản' || article.TrangThai === 'Hiển thị';
+      const nextStatus = isPublished ? 'Ẩn' : 'Đã xuất bản';
       await api.put(`/admin/content/${article.MaBaiViet}`, {
         type: 'article',
         TrangThai: nextStatus
@@ -603,10 +609,10 @@ export function ContentManagement() {
                         <TableCell>
                           <button onClick={() => handleToggleArticleStatus(article)} className="focus:outline-none hover:opacity-80 transition-opacity">
                             <Badge
-                              variant={article.TrangThai === 'Đã xuất bản' ? 'default' : 'secondary'}
-                              className={article.TrangThai === 'Đã xuất bản' ? 'bg-green-100 text-green-700 hover:bg-green-100 shadow-none border-transparent' : 'shadow-none border-transparent'}
+                              variant={(article.TrangThai === 'Đã xuất bản' || article.TrangThai === 'Hiển thị') ? 'default' : 'secondary'}
+                              className={(article.TrangThai === 'Đã xuất bản' || article.TrangThai === 'Hiển thị') ? 'bg-green-100 text-green-700 hover:bg-green-100 shadow-none border-transparent' : 'shadow-none border-transparent'}
                             >
-                              {article.TrangThai === 'Đã xuất bản' ? tText('Published', 'Đã xuất bản') : article.TrangThai === 'Nháp' ? tText('Draft', 'Bản nháp') : tText('Hidden', 'Ẩn')}
+                              {(article.TrangThai === 'Đã xuất bản' || article.TrangThai === 'Hiển thị') ? tText('Published', 'Đã xuất bản') : article.TrangThai === 'Nháp' ? tText('Draft', 'Bản nháp') : tText('Hidden', 'Ẩn')}
                             </Badge>
                           </button>
                         </TableCell>
