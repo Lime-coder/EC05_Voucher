@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { requireAuth, requireRole } from '../middlewares/auth.middleware';
 import {
   getUsers, toggleUserActive,
   getAdminVouchers, approveVoucher, rejectVoucher, suspendVoucher, restoreVoucher,
@@ -9,9 +10,11 @@ import {
   getDashboardStats, getLogs,
   getAdminProfile, updateAdminProfile, updateAdminPassword,
   getAdminNotifications,
-} from '../controllers/admin.controller';
+} from '../controllers/admin';
 
 const router = Router();
+
+router.use(requireAuth, requireRole('admin'));
 
 // Dashboard
 router.get('/dashboard/stats', getDashboardStats);
@@ -24,7 +27,7 @@ router.patch('/users/:id/toggle', toggleUserActive);
 router.get('/vouchers', getAdminVouchers);
 router.patch('/vouchers/:id/approve', approveVoucher);
 router.patch('/vouchers/:id/reject', rejectVoucher);
-router.patch('/vouchers/:id/suspend', suspendVoucher);   // ← route mới
+router.patch('/vouchers/:id/suspend', suspendVoucher);
 router.patch('/vouchers/:id/restore', restoreVoucher);
 
 

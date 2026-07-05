@@ -9,12 +9,15 @@ import {
   Zap,
   Check,
   ChevronLeft,
+  ChevronRight,
   Diamond,
   BadgeCheck,
 } from "lucide-react";
 import { Link } from "react-router";
 import { Button } from "@voucherhub/ui";
 import { useLanguage } from "../../shared/contexts/LanguageContext";
+import api from "../../../lib/api";
+import { toast } from "sonner";
 
 
 interface VoucherDetail {
@@ -85,6 +88,33 @@ export function VoucherDetailPage() {
   const [loading, setLoading] = useState(true);
   const [quantity, setQuantity] = useState(1);
   const [activeTab, setActiveTab] = useState("description");
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+
+  const holdTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const holdIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  const startHold = (type: "increment" | "decrement") => {
+    setQuantity((prev) => {
+      if (type === "increment") return Math.min(voucher?.stock || 1, prev + 1);
+      return Math.max(1, prev - 1);
+    });
+
+    holdTimeoutRef.current = setTimeout(() => {
+      holdIntervalRef.current = setInterval(() => {
+        setQuantity((prev) => {
+          if (type === "increment") return Math.min(voucher?.stock || 1, prev + 1);
+          return Math.max(1, prev - 1);
+        });
+      }, 100);
+    }, 400);
+  };
+
+  const stopHold = () => {
+    if (holdTimeoutRef.current) clearTimeout(holdTimeoutRef.current);
+    if (holdIntervalRef.current) clearInterval(holdIntervalRef.current);
+    holdTimeoutRef.current = null;
+    holdIntervalRef.current = null;
+  };
 
   const [isAdding, setIsAdding] = useState(false);
   const reviewsRef = useRef<HTMLDivElement>(null);
@@ -95,8 +125,8 @@ export function VoucherDetailPage() {
 
     if (!user) {
 
-      alert(
-        "Vui lòng đăng nhập trước khi thêm vào giỏ hàng"
+      toast.error(
+        t('auth.login_required') || "Vui lòng đăng nhập trước khi thêm vào giỏ hàng"
       );
 
       navigate("/login");
@@ -204,12 +234,12 @@ export function VoucherDetailPage() {
           setLoading(true);
 
           const response =
-            await fetch(
-              `/api/vouchers/${id}`
+            await api.get(
+              `/vouchers/${id}`
             );
 
           const data =
-            await response.json();
+            response.data;
 
           setVoucher(data);
         } catch (error) {
@@ -254,6 +284,7 @@ export function VoucherDetailPage() {
         )
       : 0;
 
+  const images = voucher.image ? voucher.image.split(',').map(url => url.startsWith('http') ? url : `http://localhost:5000${url}`) : ["https://placehold.co/600x400?text=Voucher"];
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -273,18 +304,51 @@ export function VoucherDetailPage() {
           {/* Left - Images */}
           <div>
             {/* Main Image */}
-            <div className="relative rounded-xl overflow-hidden mb-4">
+            <div className="relative rounded-xl overflow-hidden mb-4 group">
               <img
-                src={ voucher.image || "https://placehold.co/600x400?text=Voucher" }
+                src={images[selectedImageIndex] || images[0]}
                 alt="Voucher"
-                className="w-full aspect-[4/3] object-cover"
+                className="w-full aspect-[4/3] object-cover transition-opacity duration-300"
               />
-              <div className="absolute top-4 left-4 bg-[#FF4444] text-white px-3 py-1 rounded-md font-bold">
+              <div className="absolute top-4 left-4 bg-[#FF4444] text-white px-3 py-1 rounded-md font-bold shadow-sm z-10">
                 {t('voucher.best_seller')}
               </div>
+
+              {/* Navigation Arrows */}
+              {images.length > 1 && (
+                <>
+                  <button
+                    onClick={() => setSelectedImageIndex((prev) => (prev === 0 ? images.length - 1 : prev - 1))}
+                    className="absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/80 hover:bg-white text-gray-800 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all shadow-md z-10"
+                  >
+                    <ChevronLeft className="w-6 h-6 ml-[-2px]" />
+                  </button>
+                  <button
+                    onClick={() => setSelectedImageIndex((prev) => (prev === images.length - 1 ? 0 : prev + 1))}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/80 hover:bg-white text-gray-800 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all shadow-md z-10"
+                  >
+                    <ChevronRight className="w-6 h-6 mr-[-2px]" />
+                  </button>
+                </>
+              )}
             </div>
 
-          
+            {/* Thumbnails */}
+            {images.length > 1 && (
+              <div className="flex gap-3 overflow-x-auto pb-2 custom-scrollbar">
+                {images.map((img, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setSelectedImageIndex(idx)}
+                    className={`relative rounded-lg overflow-hidden shrink-0 w-20 h-20 border-2 transition-all ${
+                      selectedImageIndex === idx ? "border-primary opacity-100 ring-2 ring-primary ring-offset-1" : "border-transparent opacity-70 hover:opacity-100 hover:border-primary/50"
+                    }`}
+                  >
+                    <img src={img} alt={`Thumbnail ${idx + 1}`} className="w-full h-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Right - Details */}
@@ -319,8 +383,8 @@ export function VoucherDetailPage() {
 
             {/* Price */}
             <div className="flex items-baseline gap-3 mb-2">
-              <span className="text-4xl font-bold text-primary">${voucher.salePrice.toFixed(2)}</span>
-              <span className="text-xl text-muted line-through">${voucher.originalPrice.toFixed(2)}</span>
+              <span className="text-4xl font-bold text-primary">{voucher.salePrice.toLocaleString("vi-VN")}đ</span>
+              <span className="text-xl text-muted line-through">{voucher.originalPrice.toLocaleString("vi-VN")}đ</span>
               <span className="px-3 py-1 bg-[#FF4444] text-white rounded-md font-bold">
                 {t('voucher.off').replace('{percentage}', String(discountPercent))}
               </span>
@@ -336,7 +400,7 @@ export function VoucherDetailPage() {
                 <span className="text-[#FF4444] font-semibold">{t('voucher.only_left').replace('{count}', String(voucher.stock))}</span>
               </div>
               <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-                <div className="h-full bg-[#FF4444] rounded-full" style={{ width: `${ voucher.quantity > 0 ? ( (voucher.stock / voucher.quantity) * 100 ) : 0 }%`, }} />
+                <div className="h-full bg-[#FF4444] rounded-full" style={{ width: `${ voucher.quantity > 0 ? ( (voucher.sold / voucher.quantity) * 100 ) : 0 }%`, }} />
               </div>
             </div>
 
@@ -347,8 +411,12 @@ export function VoucherDetailPage() {
                 <Button
                   variant="outline"
                   size="icon"
-                  onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                  className="w-10 h-10 border-2 border-border rounded-lg hover:border-primary transition-colors font-bold"
+                  onMouseDown={() => startHold("decrement")}
+                  onMouseUp={stopHold}
+                  onMouseLeave={stopHold}
+                  onTouchStart={() => startHold("decrement")}
+                  onTouchEnd={stopHold}
+                  className="w-10 h-10 border-2 border-border rounded-lg hover:border-primary transition-colors font-bold select-none"
                 >
                   -
                 </Button>
@@ -356,8 +424,12 @@ export function VoucherDetailPage() {
                 <Button
                   variant="outline"
                   size="icon"
-                  onClick={() => setQuantity( Math.min( voucher.stock, quantity + 1 ) ) }
-                  className="w-10 h-10 border-2 border-border rounded-lg hover:border-primary transition-colors font-bold"
+                  onMouseDown={() => startHold("increment")}
+                  onMouseUp={stopHold}
+                  onMouseLeave={stopHold}
+                  onTouchStart={() => startHold("increment")}
+                  onTouchEnd={stopHold}
+                  className="w-10 h-10 border-2 border-border rounded-lg hover:border-primary transition-colors font-bold select-none"
                 >
                   +
                 </Button>
@@ -395,8 +467,8 @@ export function VoucherDetailPage() {
                   // =====================
                   if (!user) {
 
-                    alert(
-                      "Vui lòng đăng nhập trước khi mua hàng"
+                    toast.error(
+                      t('auth.login_required') || "Vui lòng đăng nhập trước khi mua hàng"
                     );
 
                     navigate("/login");
@@ -448,8 +520,12 @@ export function VoucherDetailPage() {
           {/* Subtle background decoration */}
           <div className="absolute top-0 right-0 w-40 h-40 bg-primary/5 rounded-bl-full -z-0" />
           
-          <div className="w-16 h-16 bg-primary/10 rounded-xl flex items-center justify-center shrink-0 border border-primary/20 relative z-10 group-hover:scale-105 transition-transform shadow-sm">
-            <Diamond className="w-8 h-8 text-primary" />
+          <div className="w-16 h-16 bg-primary/10 rounded-xl flex items-center justify-center shrink-0 border border-primary/20 relative z-10 group-hover:scale-105 transition-transform shadow-sm overflow-hidden">
+            {voucher.partner?.avatar ? (
+              <img src={voucher.partner.avatar.startsWith('http') ? voucher.partner.avatar : `http://localhost:5000${voucher.partner.avatar}`} alt={voucher.partner.name} className="w-full h-full object-cover" />
+            ) : (
+              <Diamond className="w-8 h-8 text-primary" />
+            )}
           </div>
           
           <div className="flex-1 relative z-10 w-full">
@@ -524,8 +600,10 @@ export function VoucherDetailPage() {
           )}
 
           {activeTab === "branches" && (
-            <div className="space-y-3 text-muted-foreground">
-              {voucher.branches.map(
+            <div>
+              <h3 className="font-bold text-xl text-black mb-4">{t('voucher.tab.branches')}</h3>
+              <div className="space-y-3 text-muted-foreground">
+                {voucher.branches.map(
                 (branch) => (
                   <div
                     key={branch.id}
@@ -546,11 +624,12 @@ export function VoucherDetailPage() {
                 )
               )}
             </div>
+            </div>
           )}
 
           {activeTab === "policy" && (
             <div>
-              <h3 className="font-bold text-xl mb-4">{t('voucher.cancellation_policy')}</h3>
+              <h3 className="font-bold text-xl mb-4">{t('voucher.refund_policy')}</h3>
               <p className="text-muted">
                 {voucher.refundPolicy}
               </p>

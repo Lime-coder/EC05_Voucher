@@ -1,48 +1,30 @@
-import multer from 'multer';
-import path from 'path';
-import fs from 'fs';
 import { Request, Response } from 'express';
 
-// Ensure uploads folder exists in the project root
-const uploadDir = path.join(process.cwd(), 'uploads');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, 'uploads/');
-  },
-  filename: (req, file, cb) => {
-    const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    cb(null, unique + path.extname(file.originalname));
-  }
-});
-
-export const upload = multer({
-  storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
-  fileFilter: (req, file, cb) => {
-    const filetypes = /jpeg|jpg|png|gif|webp/;
-    const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = filetypes.test(file.mimetype);
-    if (extname && mimetype) {
-      return cb(null, true);
-    }
-    cb(new Error('Chỉ cho phép tải lên file hình ảnh (jpg, jpeg, png, gif, webp)!'));
-  }
-});
-
-const uploadSingle = upload.single('image');
-
 export const uploadImage = (req: Request, res: Response): any => {
-  uploadSingle(req, res, (err) => {
-    if (err) {
-      return res.status(400).json({ error: err.message || 'Lỗi tải ảnh lên' });
+  if (!req.file) {
+    return res.status(400).json({ error: 'Không có file' });
+  }
+  res.json({ path: `/uploads/general/${req.file.filename}` });
+};
+
+import fs from 'fs';
+import path from 'path';
+
+export const deleteUploadedImage = (req: Request, res: Response): any => {
+  try {
+    const { imagePath } = req.body;
+    if (!imagePath || imagePath.startsWith('http')) {
+      return res.status(400).json({ error: 'Invalid path' });
     }
-    if (!req.file) {
-      return res.status(400).json({ error: 'Không có file' });
+    const normalizedPath = imagePath.startsWith('/') ? imagePath.slice(1) : imagePath;
+    const filePath = path.join(process.cwd(), normalizedPath);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+      return res.json({ message: 'Deleted successfully' });
     }
-    res.json({ path: `/uploads/${req.file.filename}` });
-  });
+    return res.status(404).json({ error: 'File not found' });
+  } catch (error) {
+    console.error('Delete uploaded image error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
 };

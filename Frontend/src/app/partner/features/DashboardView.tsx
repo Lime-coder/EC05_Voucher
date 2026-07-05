@@ -8,11 +8,6 @@ import {
 import { XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { cn } from '@voucherhub/ui';
 
-import {
-  recentActivities,
-  salesData as mockSalesData,
-  topVouchers as mockTopVouchers,
-} from '../data/mockData';
 import { useLanguage } from '../../shared/contexts/LanguageContext';
 
 const statIcons: Record<string, React.ReactNode> = {
@@ -29,23 +24,28 @@ export default function DashboardView() {
     totalSold: 0,
     pendingVouchers: 0,
     activeVouchers: 0,
-    topVouchers: mockTopVouchers,
-    salesData: mockSalesData // Fallback or initial state
+    topVouchers: [] as any[],
+    salesData: [] as any[] // Fallback or initial state
   });
 
   useEffect(() => {
     const fetchStats = async () => {
       try {
         const partnerId = localStorage.getItem('partnerId') || '1';
-        const response = await fetch(`http://localhost:5000/api/partners/${partnerId}/statistics`);
+        const token = localStorage.getItem('token');
+        const response = await fetch(`http://localhost:5000/api/partners/${partnerId}/statistics`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
         if (response.ok) {
           const data = await response.json();
           // Merge with mockTopVouchers if backend doesn't return topVouchers or returns empty array
           setStats(prev => ({
             ...prev,
             ...data,
-            topVouchers: data.topVouchers && data.topVouchers.length > 0 ? data.topVouchers : mockTopVouchers,
-            salesData: data.salesData || mockSalesData
+            topVouchers: data.topVouchers || [],
+            salesData: data.salesData || []
           }));
         }
       } catch (err) {
@@ -113,7 +113,7 @@ export default function DashboardView() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-8">
-        <div className="lg:col-span-7 bg-white p-6 rounded-xl shadow-sm border border-gray-100 h-full">
+        <div className="lg:col-span-12 bg-white p-6 rounded-xl shadow-sm border border-gray-100 h-full">
           <h2 className="text-lg font-bold mb-6">{t('partner.dash.revenue_sales')}</h2>
           <div className="h-[320px] w-full">
             <ResponsiveContainer width="100%" height="100%">
@@ -144,29 +144,6 @@ export default function DashboardView() {
                 />
               </LineChart>
             </ResponsiveContainer>
-          </div>
-        </div>
-
-        <div className="lg:col-span-5 bg-white p-6 rounded-xl shadow-sm border border-gray-100 h-full">
-          <h2 className="text-lg font-bold mb-6">{t('partner.dash.recent_activities')}</h2>
-          <div className="flex flex-col gap-4">
-            {recentActivities.map((activity) => (
-              <div key={activity.text} className="flex gap-4">
-                <div
-                  className={`w-2 h-2 rounded-full mt-2 shrink-0 ${
-                    activity.type === 'success'
-                      ? 'bg-green-500'
-                      : activity.type === 'warning'
-                      ? 'bg-yellow-500'
-                      : 'bg-blue-500'
-                  }`}
-                />
-                <div>
-                  <p className="text-sm font-medium">{activity.text}</p>
-                  <p className="text-xs text-gray-500 mt-1">{activity.time}</p>
-                </div>
-              </div>
-            ))}
           </div>
         </div>
       </div>

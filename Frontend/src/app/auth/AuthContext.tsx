@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect } from "react";
 import api from "../../lib/api";
+import { useCartStore } from "../../store/useCartStore";
 
 type Role = "admin" | "partner" | "customer" | null;
 
@@ -9,6 +10,8 @@ interface User {
   TenDangNhap: string;
   Email: string;
   HoTenNguoiDung: string;
+  MaDoiTac?: number;
+  AvatarUrl?: string;
 }
 
 interface AuthContextType {
@@ -16,6 +19,7 @@ interface AuthContextType {
   loading: boolean;
   login: (username: string, password: string) => Promise<{ success: boolean; user?: User; error?: string }>;
   logout: () => void;
+  updateUser: (updatedUser: Partial<User>) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -25,28 +29,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const storedUser = localStorage.getItem("user");
-    const storedToken = localStorage.getItem("token");
-    if (storedUser && storedToken) {
-      setUser(JSON.parse(storedUser));
-    }
-    setLoading(false);
+    const verifyToken = async () => {
+      const storedToken = localStorage.getItem("token");
+      if (storedToken) {
+        try {
+          const response = await api.get('/auth/me');
+          const userData = response.data.user;
+          setUser(userData);
+          localStorage.setItem('user', JSON.stringify(userData));
+
+          if (userData.role === 'partner' && userData.MaDoiTac) {
+            localStorage.setItem('partnerId', String(userData.MaDoiTac));
+          }
+
+          if (userData.role === 'customer') {
+            useCartStore.getState().syncCartWithServer();
+          }
+        } catch (error) {
+          console.error("Token verification failed:", error);
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          localStorage.removeItem('partnerId');
+          setUser(null);
+        }
+      }
+      setLoading(false);
+    };
+    verifyToken();
   }, []);
 
   const login = async (username: string, password: string) => {
     try {
       const response = await api.post('/auth/login', { TenDangNhap: username, MatKhau: password });
       const { token, user: userData } = response.data;
-      
+
       localStorage.setItem('token', token);
       localStorage.setItem('user', JSON.stringify(userData));
+
+      if (userData.role === 'partner' && userData.MaDoiTac) {
+        localStorage.setItem('partnerId', String(userData.MaDoiTac));
+      }
+
       setUser(userData);
-      
+
+      if (userData.role === 'customer') {
+        useCartStore.getState().syncCartWithServer();
+      }
+
       return { success: true, user: userData };
     } catch (error: any) {
-      return { 
-        success: false, 
-        error: error.response?.data?.message || 'Login failed' 
+      return {
+        success: false,
+        error: error.response?.data?.message || 'Login failed'
       };
     }
   };
@@ -54,11 +88,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    localStorage.removeItem('partnerId');
     setUser(null);
+    useCartStore.getState().clearCart();
+  };
+
+  const updateUser = (updatedUser: Partial<User>) => {
+    setUser((prev) => {
+      if (!prev) return null;
+      const newUser = { ...prev, ...updatedUser };
+      localStorage.setItem('user', JSON.stringify(newUser));
+      return newUser;
+    });
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, updateUser }}>
       {!loading && children}
     </AuthContext.Provider>
   );

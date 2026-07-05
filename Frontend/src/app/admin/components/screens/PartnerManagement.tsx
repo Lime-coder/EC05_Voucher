@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Search, Eye, CheckCircle, XCircle, Lock, Unlock } from 'lucide-react';
 import { toast } from 'sonner';
 import { useLanguage } from '../../../shared/contexts/LanguageContext';
+import api from '../../../../lib/api';
 import {
   Button,
   Badge,
@@ -66,16 +67,12 @@ export function PartnerManagement() {
   };
 
   const fetchPartners = () => {
-    fetch(`/api/admin/partners?t=${Date.now()}`, { cache: 'no-store' })
-      .then(res => res.json())
-      .then(data => {
+    api.get(`/admin/partners?t=${Date.now()}`)
+      .then(res => {
+        const data = res.data;
         if (Array.isArray(data)) {
-          // Map backend approval status string
           const mapped = data.map((p: any) => ({
-            ...p,
-            displayApprovalStatus: p.approvalStatus === 'APPROVED' ? 'Approved'
-                                 : p.approvalStatus === 'REJECTED' ? 'Rejected'
-                                 : 'Pending'
+            ...p
           }));
           setPartners(mapped);
         }
@@ -93,18 +90,16 @@ export function PartnerManagement() {
       tText(`Are you sure you want to approve partner "${name}"?`, `Bạn có chắc chắn muốn duyệt đối tác "${name}" không?`),
       async () => {
         try {
-          const res = await fetch(`/api/admin/partners/${id}/approve`, {
-            method: 'PATCH'
-          });
+          const res = await api.patch(`/admin/partners/${id}/approve`);
 
-          if (res.ok) {
+          if (res.status === 200) {
             toast.success(
               tText(
                 `Successfully approved partner "${name}"!`,
                 `Đã phê duyệt đối tác "${name}" thành công!`
               )
             );
-            setPartners(prev => prev.map(p => p.id === id ? { ...p, displayApprovalStatus: 'Approved', approvalStatus: 'APPROVED', status: 'ACTIVE' } : p));
+            setPartners(prev => prev.map(p => p.id === id ? { ...p, status: 'ACTIVE' } : p));
           } else {
             toast.error(tText('Approval failed!', 'Duyệt đối tác thất bại!'));
           }
@@ -123,18 +118,16 @@ export function PartnerManagement() {
       tText(`Are you sure you want to reject partner "${name}"?`, `Bạn có chắc chắn muốn từ chối đối tác "${name}" không?`),
       async () => {
         try {
-          const res = await fetch(`/api/admin/partners/${id}/reject`, {
-            method: 'PATCH'
-          });
+          const res = await api.patch(`/admin/partners/${id}/reject`);
 
-          if (res.ok) {
+          if (res.status === 200) {
             toast.success(
               tText(
                 `Successfully rejected partner "${name}"!`,
                 `Đã từ chối đối tác "${name}"!`
               )
             );
-            setPartners(prev => prev.map(p => p.id === id ? { ...p, displayApprovalStatus: 'Rejected', approvalStatus: 'REJECTED' } : p));
+            setPartners(prev => prev.map(p => p.id === id ? { ...p, status: 'REJECTED' } : p));
           } else {
             toast.error(tText('Rejection failed!', 'Từ chối đối tác thất bại!'));
           }
@@ -162,11 +155,9 @@ export function PartnerManagement() {
       confirmMsg,
       async () => {
         try {
-          const res = await fetch(`/api/admin/partners/${id}/toggle`, {
-            method: 'PATCH'
-          });
+          const res = await api.patch(`/admin/partners/${id}/toggle`);
 
-          if (res.ok) {
+          if (res.status === 200) {
             toast.success(
               isLocking
                 ? tText(`Successfully locked partner "${name}"!`, `Đã khóa đối tác "${name}" thành công!`)
@@ -174,8 +165,7 @@ export function PartnerManagement() {
             );
             setPartners(prev => prev.map(p => p.id === id ? { ...p, status: isLocking ? 'LOCKED' : 'ACTIVE' } : p));
           } else {
-            const err = await res.json();
-            toast.error(err.error || tText('Failed to change partner status!', 'Thay đổi trạng thái đối tác thất bại!'));
+            toast.error(tText('Failed to change partner status!', 'Thay đổi trạng thái đối tác thất bại!'));
           }
         } catch (e) {
           console.error(e);
@@ -193,7 +183,7 @@ export function PartnerManagement() {
 
   const filteredPartners = partners.filter((partner) => {
     const matchesSearch = partner.name.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesApproval = approvalFilter === 'all' || partner.displayApprovalStatus.toLowerCase() === approvalFilter.toLowerCase();
+    const matchesApproval = approvalFilter === 'all' || partner.status.toLowerCase() === approvalFilter.toLowerCase();
     return matchesSearch && matchesApproval;
   });
 
@@ -219,14 +209,21 @@ export function PartnerManagement() {
             onClick={() => { setApprovalFilter('pending'); setCurrentPage(1); }}
             className={approvalFilter === 'pending' ? '' : 'text-yellow-600 border-yellow-200 hover:bg-yellow-50'}
           >
-            {tText('Pending Approval', 'Chờ duyệt')}
+            {tText('Pending', 'Chờ duyệt')}
           </Button>
           <Button
-            variant={approvalFilter === 'approved' ? 'default' : 'outline'}
-            onClick={() => { setApprovalFilter('approved'); setCurrentPage(1); }}
-            className={approvalFilter === 'approved' ? '' : 'text-green-600 border-green-200 hover:bg-green-50'}
+            variant={approvalFilter === 'active' ? 'default' : 'outline'}
+            onClick={() => { setApprovalFilter('active'); setCurrentPage(1); }}
+            className={approvalFilter === 'active' ? '' : 'text-green-600 border-green-200 hover:bg-green-50'}
           >
-            {tText('Approved', 'Đã duyệt')}
+            {tText('Active', 'Hoạt động')}
+          </Button>
+          <Button
+            variant={approvalFilter === 'locked' ? 'default' : 'outline'}
+            onClick={() => { setApprovalFilter('locked'); setCurrentPage(1); }}
+            className={approvalFilter === 'locked' ? '' : 'text-orange-600 border-orange-200 hover:bg-orange-50'}
+          >
+            {tText('Locked', 'Bị khóa')}
           </Button>
           <Button
             variant={approvalFilter === 'rejected' ? 'default' : 'outline'}
@@ -258,8 +255,7 @@ export function PartnerManagement() {
               <TableHead>{tText('Category', 'Lĩnh vực')}</TableHead>
               <TableHead>{tText('Vouchers', 'Vouchers')}</TableHead>
               <TableHead>{tText('Revenue', 'Doanh thu')}</TableHead>
-              <TableHead>{tText('Approval Status', 'Trạng thái duyệt')}</TableHead>
-              <TableHead>{tText('Operational Status', 'Trạng thái HĐ')}</TableHead>
+              <TableHead>{tText('Status', 'Trạng thái')}</TableHead>
               <TableHead className="text-right">{tText('Actions', 'Hành động')}</TableHead>
             </TableRow>
           </TableHeader>
@@ -271,43 +267,30 @@ export function PartnerManagement() {
                 </TableCell>
                 <TableCell className="font-medium text-gray-900">{partner.name}</TableCell>
                 <TableCell>
-                  {partner.category === 'Giải trí' ? tText('Entertainment', 'Giải trí') 
-                   : partner.category === 'Du lịch' ? tText('Travel', 'Du lịch') 
-                   : partner.category === 'Làm đẹp' ? tText('Beauty', 'Làm đẹp') 
-                   : partner.category === 'Khác' ? tText('Other', 'Khác') 
-                   : partner.category}
+                  {(() => {
+                    const cat = partner.category?.toLowerCase() || '';
+                    if (['retail', 'bán lẻ'].includes(cat)) return tText('Retail', 'Bán lẻ');
+                    if (['food', 'ẩm thực'].includes(cat)) return tText('Food & Beverage', 'Ẩm thực');
+                    if (['travel', 'du lịch'].includes(cat)) return tText('Travel & Tourism', 'Du lịch');
+                    if (['health', 'làm đẹp', 'sức khỏe', 'spa'].includes(cat)) return tText('Health & Beauty', 'Sức khỏe & Làm đẹp');
+                    if (['entertainment', 'giải trí'].includes(cat)) return tText('Entertainment', 'Giải trí');
+                    if (['auto', 'ô tô'].includes(cat)) return tText('Automotive', 'Ô tô & Xe máy');
+                    if (['edu', 'giáo dục'].includes(cat)) return tText('Education', 'Giáo dục');
+                    if (['sports', 'thể thao'].includes(cat)) return tText('Sports', 'Thể thao');
+                    if (['hotel', 'khách sạn'].includes(cat)) return tText('Hotel', 'Khách sạn');
+                    if (['resort', 'khu nghỉ dưỡng'].includes(cat)) return tText('Resort', 'Khu nghỉ dưỡng');
+                    if (['other', 'khác'].includes(cat)) return tText('Other', 'Khác');
+                    return partner.category ? partner.category.charAt(0).toUpperCase() + partner.category.slice(1) : '';
+                  })()}
                 </TableCell>
                 <TableCell>{partner.vouchers}</TableCell>
                 <TableCell className="font-medium text-gray-900">{partner.revenue}</TableCell>
                 <TableCell>
                   <Badge
                     variant={
-                      partner.displayApprovalStatus === 'Approved' ? 'default'
-                      : partner.displayApprovalStatus === 'Pending' ? 'outline'
-                      : 'destructive'
-                    }
-                    className={
-                      partner.displayApprovalStatus === 'Approved'
-                        ? 'bg-green-100 text-green-700 hover:bg-green-100 shadow-none border-transparent'
-                        : partner.displayApprovalStatus === 'Pending'
-                        ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-100 shadow-none border-transparent'
-                        : 'bg-red-100 text-red-700 hover:bg-red-100 shadow-none border-transparent'
-                    }
-                  >
-                    {tText(partner.displayApprovalStatus, 
-                      partner.displayApprovalStatus === 'Approved' ? 'Đã duyệt'
-                      : partner.displayApprovalStatus === 'Pending' ? 'Chờ duyệt'
-                      : 'Từ chối'
-                    )}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <Badge
-                    variant={
                       partner.status === 'ACTIVE' ? 'default'
                       : partner.status === 'PENDING' ? 'outline'
-                      : partner.status === 'LOCKED' ? 'destructive'
-                      : 'secondary'
+                      : 'destructive'
                     }
                     className={
                       partner.status === 'ACTIVE'
@@ -315,14 +298,14 @@ export function PartnerManagement() {
                         : partner.status === 'PENDING'
                         ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-100 shadow-none border-transparent'
                         : partner.status === 'LOCKED'
-                        ? 'bg-red-100 text-red-700 hover:bg-red-100 shadow-none border-transparent'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-100 shadow-none border-transparent'
+                        ? 'bg-orange-100 text-orange-800 hover:bg-orange-100 shadow-none border-transparent'
+                        : 'bg-red-100 text-red-700 hover:bg-red-100 shadow-none border-transparent'
                     }
                   >
                     {partner.status === 'ACTIVE' ? tText('Active', 'Hoạt động')
-                     : partner.status === 'PENDING' ? tText('Pending', 'Chờ kích hoạt')
+                     : partner.status === 'PENDING' ? tText('Pending', 'Chờ duyệt')
                      : partner.status === 'LOCKED' ? tText('Locked', 'Bị khóa')
-                     : tText('Inactive', 'Tạm dừng')}
+                     : tText('Rejected', 'Từ chối')}
                   </Badge>
                 </TableCell>
                 <TableCell className="text-right">
@@ -331,7 +314,7 @@ export function PartnerManagement() {
                       <Eye className="w-4 h-4" />
                     </Button>
                     
-                    {partner.displayApprovalStatus === 'Pending' && (
+                    {partner.status === 'PENDING' && (
                       <>
                         <Button onClick={() => handleApprovePartner(partner.id, partner.name)} variant="ghost" size="icon" className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50" title={tText('Approve', 'Duyệt đối tác')}>
                           <CheckCircle className="w-4 h-4" />
@@ -418,7 +401,7 @@ export function PartnerManagement() {
             </DialogTitle>
           </DialogHeader>
           {selectedPartner && (
-            <div className="py-4 space-y-3 text-sm">
+            <div className="py-4 space-y-3 text-sm max-h-[60vh] overflow-y-auto pr-6 -mr-6">
               <div className="flex justify-between border-b pb-2">
                 <span className="text-gray-500 font-medium">{tText('Enterprise Name:', 'Tên doanh nghiệp:')}</span>
                 <span className="font-semibold text-gray-900">{selectedPartner.name}</span>
@@ -426,11 +409,21 @@ export function PartnerManagement() {
               <div className="flex justify-between border-b pb-2">
                 <span className="text-gray-500 font-medium">{tText('Field of Business:', 'Lĩnh vực kinh doanh:')}</span>
                 <span className="text-gray-900">
-                  {selectedPartner.category === 'Giải trí' ? tText('Entertainment', 'Giải trí') 
-                   : selectedPartner.category === 'Du lịch' ? tText('Travel', 'Du lịch') 
-                   : selectedPartner.category === 'Làm đẹp' ? tText('Beauty', 'Làm đẹp') 
-                   : selectedPartner.category === 'Khác' ? tText('Other', 'Khác') 
-                   : selectedPartner.category}
+                  {(() => {
+                    const cat = selectedPartner.category?.toLowerCase() || '';
+                    if (['retail', 'bán lẻ'].includes(cat)) return tText('Retail', 'Bán lẻ');
+                    if (['food', 'ẩm thực'].includes(cat)) return tText('Food & Beverage', 'Ẩm thực');
+                    if (['travel', 'du lịch'].includes(cat)) return tText('Travel & Tourism', 'Du lịch');
+                    if (['health', 'làm đẹp', 'sức khỏe', 'spa'].includes(cat)) return tText('Health & Beauty', 'Sức khỏe & Làm đẹp');
+                    if (['entertainment', 'giải trí'].includes(cat)) return tText('Entertainment', 'Giải trí');
+                    if (['auto', 'ô tô'].includes(cat)) return tText('Automotive', 'Ô tô & Xe máy');
+                    if (['edu', 'giáo dục'].includes(cat)) return tText('Education', 'Giáo dục');
+                    if (['sports', 'thể thao'].includes(cat)) return tText('Sports', 'Thể thao');
+                    if (['hotel', 'khách sạn'].includes(cat)) return tText('Hotel', 'Khách sạn');
+                    if (['resort', 'khu nghỉ dưỡng'].includes(cat)) return tText('Resort', 'Khu nghỉ dưỡng');
+                    if (['other', 'khác'].includes(cat)) return tText('Other', 'Khác');
+                    return selectedPartner.category ? selectedPartner.category.charAt(0).toUpperCase() + selectedPartner.category.slice(1) : '';
+                  })()}
                 </span>
               </div>
               <div className="flex justify-between border-b pb-2">
@@ -442,6 +435,26 @@ export function PartnerManagement() {
                 <span className="text-gray-900">{selectedPartner.representative || tText('Not provided', 'Chưa cung cấp')}</span>
               </div>
               <div className="flex justify-between border-b pb-2">
+                <span className="text-gray-500 font-medium">{tText('Phone:', 'Số điện thoại:')}</span>
+                <span className="text-gray-900">{selectedPartner.phone || tText('Not provided', 'Chưa cung cấp')}</span>
+              </div>
+              <div className="flex justify-between border-b pb-2">
+                <span className="text-gray-500 font-medium">{tText('Email:', 'Email:')}</span>
+                <span className="text-gray-900">{selectedPartner.email || tText('Not provided', 'Chưa cung cấp')}</span>
+              </div>
+              <div className="flex justify-between border-b pb-2">
+                <span className="text-gray-500 font-medium">{tText('Operating Hours:', 'Giờ hoạt động:')}</span>
+                <span className="text-gray-900">
+                  {selectedPartner.openTime && selectedPartner.closeTime 
+                    ? `${selectedPartner.openTime} - ${selectedPartner.closeTime}`
+                    : tText('Not provided', 'Chưa cung cấp')}
+                </span>
+              </div>
+              <div className="flex flex-col border-b pb-2 gap-1">
+                <span className="text-gray-500 font-medium">{tText('Description:', 'Mô tả:')}</span>
+                <span className="text-gray-900 whitespace-pre-wrap">{selectedPartner.description || tText('Not provided', 'Chưa cung cấp')}</span>
+              </div>
+              <div className="flex justify-between border-b pb-2">
                 <span className="text-gray-500 font-medium">{tText('Voucher Count:', 'Số lượng voucher:')}</span>
                 <span className="text-gray-900 font-semibold">{selectedPartner.vouchers}</span>
               </div>
@@ -450,20 +463,27 @@ export function PartnerManagement() {
                 <span className="text-green-600 font-semibold">{selectedPartner.revenue}</span>
               </div>
               <div className="flex justify-between border-b pb-2">
-                <span className="text-gray-500 font-medium">{tText('Approval Status:', 'Trạng thái duyệt:')}</span>
+                <span className="text-gray-500 font-medium">{tText('Status:', 'Trạng thái:')}</span>
                 <Badge
                   variant={
-                    selectedPartner.displayApprovalStatus === 'Approved' ? 'default'
-                    : selectedPartner.displayApprovalStatus === 'Pending' ? 'outline'
+                    selectedPartner.status === 'ACTIVE' ? 'default'
+                    : selectedPartner.status === 'PENDING' ? 'outline'
                     : 'destructive'
                   }
-                  className={selectedPartner.displayApprovalStatus === 'Approved' ? 'bg-green-100 text-green-700 hover:bg-green-100 shadow-none' : ''}
+                  className={
+                    selectedPartner.status === 'ACTIVE'
+                      ? 'bg-green-100 text-green-700 hover:bg-green-100 shadow-none'
+                      : selectedPartner.status === 'PENDING'
+                      ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-100 shadow-none'
+                      : selectedPartner.status === 'LOCKED'
+                      ? 'bg-orange-100 text-orange-800 hover:bg-orange-100 shadow-none'
+                      : 'bg-red-100 text-red-700 hover:bg-red-100 shadow-none'
+                  }
                 >
-                  {tText(selectedPartner.displayApprovalStatus, 
-                    selectedPartner.displayApprovalStatus === 'Approved' ? 'Đã duyệt'
-                    : selectedPartner.displayApprovalStatus === 'Pending' ? 'Chờ duyệt'
-                    : 'Từ chối'
-                  )}
+                  {selectedPartner.status === 'ACTIVE' ? tText('Active', 'Hoạt động')
+                   : selectedPartner.status === 'PENDING' ? tText('Pending', 'Chờ duyệt')
+                   : selectedPartner.status === 'LOCKED' ? tText('Locked', 'Bị khóa')
+                   : tText('Rejected', 'Từ chối')}
                 </Badge>
               </div>
               <div className="flex justify-between pb-2">

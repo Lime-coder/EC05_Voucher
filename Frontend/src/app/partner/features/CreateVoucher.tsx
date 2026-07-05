@@ -20,8 +20,12 @@ import {
 } from '@voucherhub/ui';
 import { useLanguage } from '../../shared/contexts/LanguageContext';
 import { cn } from '@voucherhub/ui';
+import api from '../../../lib/api';
+import { useAuth } from '../../auth/AuthContext';
 export default function CreateVoucher() {
   const { t } = useLanguage();
+  const { user } = useAuth();
+  const partnerId = user?.MaDoiTac || 1;
   const [formData, setFormData] = useState<CreateVoucherFormData & { id?: number }>(initialCreateVoucherForm);
 
   const [images, setImages] = useState<ImageItem[]>([]);
@@ -31,19 +35,18 @@ export default function CreateVoucher() {
 
   // Fetch branches and categories from API
   useEffect(() => {
-    const partnerId = localStorage.getItem('partnerId') || '1';
-    fetch(`http://localhost:5000/api/branches/partner/${partnerId}`)
-      .then(res => res.json())
-      .then(data => {
+    api.get(`/branches/partner/${partnerId}`)
+      .then(res => {
+        const data = res.data;
         if (Array.isArray(data)) {
           setPartnerBranches(data.map((b: any) => b.TenChiNhanh));
         }
       })
       .catch(console.error);
 
-    fetch('http://localhost:5000/api/categories')
-      .then(res => res.json())
-      .then(data => {
+    api.get('/categories')
+      .then(res => {
+        const data = res.data;
         if (Array.isArray(data)) {
           setVoucherCategories(data.map((c: any) => ({ id: c.MaDanhMuc, name: c.TenDanhMuc })));
         }
@@ -149,13 +152,12 @@ export default function CreateVoucher() {
       uploadFormData.append('image', file);
 
       try {
-        const res = await fetch(`http://localhost:5000/api/vouchers/upload-image`, {
-          method: 'POST',
-          body: uploadFormData,
+        const res = await api.post(`/vouchers/upload-image`, uploadFormData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
         });
 
-        if (res.ok) {
-          const data = await res.json();
+        if (res.status === 200 || res.status === 201) {
+          const data = res.data;
           const newImage = {
             id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
             url: `http://localhost:5000${data.imageUrl}`,
@@ -176,11 +178,28 @@ export default function CreateVoucher() {
     setImages(images.map(img => img.id === id ? { ...img, description } : img));
   };
 
-  const handleRemoveImage = (id: string) => {
+  const handleRemoveImage = async (id: string) => {
+    const imgToRemove = images.find(img => img.id === id);
+    if (imgToRemove && imgToRemove.url.includes('/uploads/temp/')) {
+      try {
+        await api.delete(`/vouchers/upload-image?url=${encodeURIComponent(imgToRemove.url)}`);
+      } catch (error) {
+        console.error('Failed to delete image from server', error);
+      }
+    }
     setImages(images.filter(img => img.id !== id));
   };
 
-  const handleClearDraft = () => {
+  const handleClearDraft = async () => {
+    for (const img of images) {
+      if (img.url.includes('/uploads/temp/')) {
+        try {
+          await api.delete(`/vouchers/upload-image?url=${encodeURIComponent(img.url)}`);
+        } catch (e) {
+          console.error('Failed to clean up image on draft clear', e);
+        }
+      }
+    }
     setFormData(initialCreateVoucherForm);
     setImages([]);
     localStorage.removeItem('voucher_draft');
@@ -205,37 +224,35 @@ export default function CreateVoucher() {
     if (e.target.files && e.target.files.length > 0) {
       handleFiles(e.target.files);
     }
+    e.target.value = '';
   };
 
   const handleSubmit = (isDraft: boolean) => {
-    if (!isDraft) {
-      if (
-        !formData.name ||
-        !formData.categories?.length ||
-        !formData.branches?.length ||
-        !formData.originalPrice ||
-        !formData.salePrice ||
-        !formData.quantity ||
-        !formData.saleStartDate ||
-        !formData.saleEndDate ||
-        !formData.validStartDate ||
-        !formData.validEndDate ||
-        !formData.description ||
-        !formData.terms
-      ) {
-        toast.error(t('toast.voucher.missing_fields') || 'Vui lòng điền đầy đủ các trường bắt buộc (*)!');
-        return;
-      }
+    if (
+      !formData.name ||
+      !formData.categories?.length ||
+      !formData.branches?.length ||
+      !formData.originalPrice ||
+      !formData.salePrice ||
+      !formData.quantity ||
+      !formData.saleStartDate ||
+      !formData.saleEndDate ||
+      !formData.validStartDate ||
+      !formData.validEndDate ||
+      (!isDraft && (!formData.description || !formData.terms))
+    ) {
+      toast.error(t('toast.voucher.missing_fields') || 'Vui lòng điền đầy đủ các trường bắt buộc (*)!');
+      return;
+    }
 
-      if (new Date(formData.saleEndDate!) < new Date(formData.saleStartDate!)) {
-        toast.error(t('toast.voucher.date_error') || 'Ngày kết thúc bán phải lớn hơn hoặc bằng ngày bắt đầu bán!');
-        return;
-      }
+    if (new Date(formData.saleEndDate!) < new Date(formData.saleStartDate!)) {
+      toast.error(t('toast.voucher.date_error') || 'Ngày kết thúc bán phải lớn hơn hoặc bằng ngày bắt đầu bán!');
+      return;
+    }
 
-      if (new Date(formData.validEndDate!) < new Date(formData.validStartDate!)) {
-        toast.error(t('toast.voucher.date_error') || 'Ngày kết thúc sử dụng phải lớn hơn hoặc bằng ngày bắt đầu sử dụng!');
-        return;
-      }
+    if (new Date(formData.validEndDate!) < new Date(formData.validStartDate!)) {
+      toast.error(t('toast.voucher.date_error') || 'Ngày kết thúc sử dụng phải lớn hơn hoặc bằng ngày bắt đầu sử dụng!');
+      return;
     }
 
     if (formData.originalPrice && formData.salePrice) {
@@ -260,31 +277,29 @@ export default function CreateVoucher() {
       const payload = {
         ...formData,
         categoryId: categoryObj ? categoryObj.id : null,
-        partnerId: parseInt(localStorage.getItem('partnerId') || '1', 10),
+        partnerId,
         status,
         imageUrl: imageUrlsStr,
         images // Optional: send images if the backend handles them
       };
 
-      const url = formData.id ? `http://localhost:5000/api/vouchers/${formData.id}` : 'http://localhost:5000/api/vouchers';
-      const method = formData.id ? 'PUT' : 'POST';
+      const url = formData.id ? `/vouchers/${formData.id}` : '/vouchers';
+      const method = formData.id ? 'put' : 'post';
 
-      const response = await fetch(url, {
+      const response = await api({
         method,
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload)
+        url,
+        data: payload
       });
 
-      if (!response.ok) {
+      if (response.status !== 200 && response.status !== 201) {
         if (response.status === 404 || response.status === 500) {
           throw new Error('404');
         }
         throw new Error('Lỗi khi lưu Voucher');
       }
 
-      const data = await response.json();
+      const data = response.data;
 
       toast.success(submitModal.isDraft ? (t('toast.voucher.draft_success') || 'Đã lưu bản nháp thành công!') : (t('toast.voucher.submit_success') || 'Đã gửi duyệt Voucher thành công!'));
       setSubmitModal({ isOpen: false, isDraft: false });
@@ -375,7 +390,7 @@ export default function CreateVoucher() {
               </div>
 
               <div className="md:col-span-2 space-y-2">
-                <label className="text-sm font-medium">{t('partner.create.description_label') || 'Mô tả'}</label>
+                <label className="text-sm font-medium">{t('partner.create.description_label') || 'Mô tả'} *</label>
                 <textarea
                   className="flex min-h-[150px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   value={formData.description}
@@ -395,7 +410,7 @@ export default function CreateVoucher() {
               </div>
 
               <div className="md:col-span-2 space-y-2">
-                <label className="text-sm font-medium">{t('partner.create.terms_label')}</label>
+                <label className="text-sm font-medium">{t('partner.create.terms_label') || 'Điều kiện'} *</label>
                 <textarea
                   className="flex min-h-[100px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   value={formData.terms}
@@ -527,6 +542,7 @@ export default function CreateVoucher() {
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleImageDescriptionChange(image.id, e.target.value)}
                       />
                       <Button
+                        type="button"
                         variant="destructive"
                         size="sm"
                         className="w-full gap-2"

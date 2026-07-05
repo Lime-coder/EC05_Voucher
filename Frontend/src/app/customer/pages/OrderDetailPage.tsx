@@ -75,10 +75,12 @@ export function OrderDetailPage() {
 
   }, [orderId]);
 
-  const StatusBadge = ({ status }: { status: "unused" | "used" }) => {
+  const StatusBadge = ({ status }: { status: "unused" | "used" | "refunded" }) => {
     const styles =
       status === "unused"
         ? "border-primary text-primary bg-primary/10"
+        : status === "refunded"
+        ? "border-red-500 text-red-500 bg-red-500/10"
         : "border-[#9CA3AF] text-[#9CA3AF] bg-[#9CA3AF]/10";
 
     return (
@@ -202,9 +204,19 @@ export function OrderDetailPage() {
                       <div className="text-right mr-4">
                         <p className="text-sm text-muted">{t('order.total_price')}</p>
                         <p className="font-bold text-lg">
-                          ${Number(voucher.DonGia || 0).toFixed(2)}
+                          {Number((voucher.DonGia || 0) * (voucher.SoLuongMua || 1)).toLocaleString('vi-VN')} VND
                         </p>
                       </div>
+
+                      {voucher.MaVouchers.some(c => c.TrangThaiSuDung === "USED" || c.TrangThaiSuDung === "Đã sử dụng") && (
+                        <button
+                          onClick={() => navigate(`/review/${voucher.MaCTDonHang}`)}
+                          className="px-3 py-2 border border-border rounded hover:bg-white transition-colors text-sm font-semibold flex items-center gap-1"
+                        >
+                          <MessageSquare className="w-4 h-4" /> {t('order.review')}
+                        </button>
+                      )}
+
                       <button
                         onClick={() =>
                           toggleExpand(
@@ -248,10 +260,12 @@ export function OrderDetailPage() {
                             </p>
                           </div>
                           <div className="flex items-center gap-3">
-                            <p className="font-semibold">${Number(voucher.DonGia || 0).toFixed(2)}</p>
+                            <p className="font-semibold">{Number(voucher.DonGia || 0).toLocaleString('vi-VN')} VND</p>
                             <StatusBadge
                               status={
-                                codeItem.TrangThaiSuDung === "USED"
+                                codeItem.TrangThaiSuDung === "Hủy voucher"
+                                  ? "refunded"
+                                  : codeItem.TrangThaiSuDung === "USED" || codeItem.TrangThaiSuDung === "Đã sử dụng"
                                   ? "used"
                                   : "unused"
                               }
@@ -261,12 +275,6 @@ export function OrderDetailPage() {
                               className="px-3 py-2 border border-border rounded hover:bg-white transition-colors text-sm font-semibold flex items-center gap-1"
                             >
                               <QrCode className="w-4 h-4" /> {t('order.view_qr')}
-                            </button>
-                            <button
-                              onClick={() => navigate(`/review/${voucher.MaCTDonHang}`)}
-                              className="px-3 py-2 border border-border rounded hover:bg-white transition-colors text-sm font-semibold flex items-center gap-1"
-                            >
-                              <MessageSquare className="w-4 h-4" /> {t('order.review')}
                             </button>
                             <span className="px-3 py-1 ml-2 bg-secondary text-foreground rounded text-base font-bold">x1</span>
                           </div>
@@ -284,7 +292,7 @@ export function OrderDetailPage() {
                     <div className="flex items-center gap-3 flex-1">
                       <Ticket className="w-10 h-10 text-muted-foreground" />
                       <div>
-                        <Link to={`/voucher/${voucher.MaCTDonHang}`} className="font-bold text-lg text-foreground hover:underline hover:text-primary mb-1 inline-block">
+                        <Link to={`/voucher/${voucher.VoucherID}`} className="font-bold text-lg text-foreground hover:underline hover:text-primary mb-1 inline-block">
                           {voucher.Voucher.TenVoucher}
                         </Link>
                         <p className="font-mono text-sm text-muted-foreground">
@@ -297,7 +305,7 @@ export function OrderDetailPage() {
                       <div className="text-right">
                         <p className="text-xs text-muted-foreground uppercase">{t('order.unit_price')}</p>
                         <p className="font-semibold">
-                          ${Number(voucher.DonGia || 0 ).toFixed(2)}
+                          {Number(voucher.DonGia || 0).toLocaleString('vi-VN')} VND
                         </p>
                       </div>
 
@@ -308,10 +316,12 @@ export function OrderDetailPage() {
                         <p className="font-semibold">{voucher.MaVouchers[0]?.NgayHetHan || 'N/A'}</p>
                       </div>
 
-                      <StatusBadge status={voucher.MaVouchers?.[0]
-                                            ?.TrangThaiSuDung === "USED"
-                                            ? "used"
-                                            : "unused"} />
+                      <StatusBadge status={
+                                              voucher.MaVouchers?.[0]?.TrangThaiSuDung === "Hủy voucher"
+                                              ? "refunded"
+                                              : voucher.MaVouchers?.[0]?.TrangThaiSuDung === "USED" || voucher.MaVouchers?.[0]?.TrangThaiSuDung === "Đã sử dụng"
+                                              ? "used"
+                                              : "unused"} />
 
                       <div className="flex gap-2">
                         <button 
@@ -320,12 +330,14 @@ export function OrderDetailPage() {
                         >
                           <QrCode className="w-4 h-4" /> {t('order.view_qr')}
                         </button>
+                        { (voucher.MaVouchers?.[0]?.TrangThaiSuDung === "USED" || voucher.MaVouchers?.[0]?.TrangThaiSuDung === "Đã sử dụng") && (
                         <button
                           onClick={() => navigate(`/review/${voucher.MaCTDonHang}`)}
                           className="px-3 py-2 border border-border rounded hover:bg-secondary transition-colors text-sm font-semibold flex items-center gap-1"
                         >
                           <MessageSquare className="w-4 h-4" /> {t('order.review')}
                         </button>
+                        )}
                       </div>
 
                       <span className="px-3 py-1 ml-2 bg-secondary text-foreground rounded text-base font-bold">

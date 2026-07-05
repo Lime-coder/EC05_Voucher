@@ -1,39 +1,75 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router";
 import { AlertTriangle, CreditCard, Lock, ChevronRight } from "lucide-react";
-import { Button, Input } from "@voucherhub/ui";
+import { Button, Input, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@voucherhub/ui";
 import { useLanguage } from "../../shared/contexts/LanguageContext";
+import { useAuth } from "../../auth/AuthContext";
+import api from "../../../lib/api";
 
 import { useCartStore } from "../../../store/useCartStore";
 
 export function ReviewOrderPage() {
   const navigate = useNavigate();
   const { t } = useLanguage();
+  const { user } = useAuth();
 
-  const [fullName,
-  setFullName] =
-    useState("");
+  const [fullName, setFullName] = useState(() => {
+    try { const saved = JSON.parse(localStorage.getItem("checkout-info") || "{}"); return saved.fullName || ""; } catch { return ""; }
+  });
 
-  const [phone,
-  setPhone] =
-    useState("");
+  const [phone, setPhone] = useState(() => {
+    try { const saved = JSON.parse(localStorage.getItem("checkout-info") || "{}"); return saved.phone || ""; } catch { return ""; }
+  });
 
-  const [email,
-  setEmail] =
-    useState("");
+  const [email, setEmail] = useState(() => {
+    try { const saved = JSON.parse(localStorage.getItem("checkout-info") || "{}"); return saved.email || ""; } catch { return ""; }
+  });
 
+  useEffect(() => {
+    const fetchProfile = async () => {
+      if (!user) return;
+      try {
+        const res = await api.get('/auth/me');
+        const data = res.data.user;
 
+        let saved: any = {};
+        try {
+          saved = JSON.parse(localStorage.getItem("checkout-info") || "{}");
+        } catch (e) { }
 
+        // Nếu checkout-info đã lưu có email trùng với email của tài khoản đang đăng nhập,
+        // thì ưu tiên sử dụng thông tin đã lưu (do người dùng tự chỉnh sửa).
+        // Ngược lại, lấy thông tin chính xác từ database profile.
+        if (saved && saved.email === data.Email) {
+          if (saved.fullName) setFullName(saved.fullName);
+          if (saved.phone) setPhone(saved.phone);
+          if (saved.email) setEmail(saved.email);
+        } else {
+          setFullName(data.HoTenNguoiDung || "");
+          setEmail(data.Email || "");
+          setPhone(data.KhachHang?.SDT_KH || "");
+        }
+      } catch (error) {
+        console.error("Failed to fetch profile for checkout prefill");
+      }
+    };
+    fetchProfile();
+  }, [user]);
+
+  const [errors, setErrors] = useState({ fullName: false, phone: false, email: false });
+  const [showErrorModal, setShowErrorModal] = useState(false);
+  const [errorModalMessage, setErrorModalMessage] = useState("");
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
   const { items: vouchers, getCartTotal } = useCartStore();
 
   const subtotal = getCartTotal();
-  const processingFee = 12.5;
-  const tax = 45.0;
+  const processingFee = 800;
+  const tax = subtotal * 0.08;
   const grandTotal = subtotal + processingFee + tax;
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
-      
+
       <main className="flex-1 max-w-[1440px] mx-auto px-6 py-8 w-full">
         {/* Breadcrumb */}
         <div className="mb-6 text-sm flex items-center gap-2">
@@ -73,9 +109,10 @@ export function ReviewOrderPage() {
                 <Input
                   type="text"
                   name="fullName"
-                  onChange={(e) => setFullName( e.target.value ) }
+                  value={fullName}
+                  onChange={(e) => { setFullName(e.target.value); setErrors(prev => ({ ...prev, fullName: false })); }}
                   placeholder="e.g. Alexander Hamilton"
-                  className="bg-input-background"
+                  className={`bg-input-background ${errors.fullName ? 'border-red-500 ring-1 ring-red-500' : ''}`}
                 />
               </div>
 
@@ -86,9 +123,10 @@ export function ReviewOrderPage() {
                 <Input
                   type="tel"
                   name="phone"
-                  onChange={(e) => setPhone( e.target.value ) }
+                  value={phone}
+                  onChange={(e) => { setPhone(e.target.value); setErrors(prev => ({ ...prev, phone: false })); }}
                   placeholder="+1 (555) 000-0000"
-                  className="bg-input-background"
+                  className={`bg-input-background ${errors.phone ? 'border-red-500 ring-1 ring-red-500' : ''}`}
                 />
               </div>
 
@@ -99,9 +137,10 @@ export function ReviewOrderPage() {
                 <Input
                   type="email"
                   name="email"
-                  onChange={(e) => setEmail( e.target.value ) }
+                  value={email}
+                  onChange={(e) => { setEmail(e.target.value); setErrors(prev => ({ ...prev, email: false })); }}
                   placeholder="alexander@treasury.gov"
-                  className="bg-input-background"
+                  className={`bg-input-background ${errors.email ? 'border-red-500 ring-1 ring-red-500' : ''}`}
                 />
               </div>
             </div>
@@ -130,7 +169,7 @@ export function ReviewOrderPage() {
                       </div>
                       <div className="text-right">
                         <p className="font-semibold">
-                          {t('review.per_item').replace('{price}', voucher.price.toFixed(2))}
+                          {t('review.per_item').replace('{price}', voucher.price.toLocaleString("vi-VN") + 'đ')}
                         </p>
                         <span className="inline-block mt-1 bg-secondary px-2 py-1 rounded text-xs font-semibold">
                           {t('review.qty').replace('{qty}', String(voucher.quantity))}
@@ -167,17 +206,17 @@ export function ReviewOrderPage() {
               <div className="space-y-3 mb-4">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">{t('cart.subtotal')}</span>
-                  <span className="font-semibold">${subtotal.toFixed(2)}</span>
+                  <span className="font-semibold">{subtotal.toLocaleString("vi-VN")}đ</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">{t('review.processing_fee')}</span>
                   <span className="font-semibold">
-                    ${processingFee.toFixed(2)}
+                    {processingFee.toLocaleString("vi-VN")}đ
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">{t('review.tax_calc')}</span>
-                  <span className="font-semibold">${tax.toFixed(2)}</span>
+                  <span className="font-semibold">{tax.toLocaleString("vi-VN")}đ</span>
                 </div>
               </div>
 
@@ -185,53 +224,83 @@ export function ReviewOrderPage() {
                 <div className="flex justify-between items-center">
                   <span className="font-bold">{t('review.grand_total')}</span>
                   <span className="font-black text-3xl">
-                    ${grandTotal.toFixed(2)}
+                    {grandTotal.toLocaleString("vi-VN")}đ
                   </span>
                 </div>
               </div>
 
               <Button
-                onClick={() => {
+                disabled={isCheckingOut}
+                onClick={async () => {
+
+                  const newErrors = {
+                    fullName: !fullName.trim(),
+                    phone: !phone.trim(),
+                    email: !email.trim(),
+                  };
+                  setErrors(newErrors);
 
                   // =====================
                   // Validate
                   // =====================
                   if (
-                    !fullName.trim() ||
-                    !phone.trim() ||
-                    !email.trim()
+                    newErrors.fullName ||
+                    newErrors.phone ||
+                    newErrors.email
                   ) {
 
-                    alert(
-                      "Vui lòng nhập đầy đủ thông tin"
-                    );
+                    setErrorModalMessage("Vui lòng nhập đầy đủ thông tin");
+                    setShowErrorModal(true);
 
                     return;
                   }
 
-                  // =====================
-                  // Lưu buyer info
-                  // =====================
-                  localStorage.setItem(
-                    "checkout-info",
+                  setIsCheckingOut(true);
 
-                    JSON.stringify({
-                      fullName,
-                      phone,
-                      email,
-                    })
-                  );
+                  try {
+                    // Check stock
+                    for (const item of vouchers) {
+                      const res = await fetch(`/api/vouchers/${item.id}`);
+                      if (res.ok) {
+                        const data = await res.json();
+                        if (data.stock < item.quantity) {
+                          setErrorModalMessage(`${item.name} không đủ số lượng (còn ${data.stock})`);
+                          setShowErrorModal(true);
+                          setIsCheckingOut(false);
+                          return;
+                        }
+                      }
+                    }
 
-                  // =====================
-                  // Chuyển payment
-                  // =====================
-                  navigate(
-                    "/checkout/payment"
-                  );
+                    // =====================
+                    // Lưu buyer info
+                    // =====================
+                    localStorage.setItem(
+                      "checkout-info",
+                      JSON.stringify({
+                        fullName,
+                        phone,
+                        email,
+                      })
+                    );
+
+                    // =====================
+                    // Chuyển sang payment method page KHÔNG CÓ orderId
+                    // (Đơn hàng sẽ được tạo khi user click Xác nhận Thanh Toán)
+                    // =====================
+                    navigate(
+                      `/checkout/payment`
+                    );
+                  } catch (e: any) {
+                    console.error("Checkout error:", e);
+                    setErrorModalMessage(e.response?.data?.message || e.message || "Kiểm tra thông tin thất bại, vui lòng thử lại.");
+                    setShowErrorModal(true);
+                    setIsCheckingOut(false);
+                  }
                 }}
                 className="w-full py-6 bg-primary text-primary-foreground font-bold hover:opacity-90 transition-colors mb-3 flex items-center justify-center gap-2"
               >
-                {t('review.pay_now')} <CreditCard className="w-5 h-5" />
+                {isCheckingOut ? t('review.processing') || 'Processing...' : <>{t('review.pay_now')} <CreditCard className="w-5 h-5" /></>}
               </Button>
 
               <p className="text-xs text-center text-muted-foreground mb-4 flex items-center justify-center gap-1">
@@ -269,6 +338,24 @@ export function ReviewOrderPage() {
         </div>
       </main>
 
+      <Dialog open={showErrorModal} onOpenChange={setShowErrorModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold text-red-600 flex items-center gap-2">
+              <AlertTriangle className="w-6 h-6" />
+              {t('review.error_title') || 'Lỗi'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-4 text-gray-700">
+            {errorModalMessage}
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setShowErrorModal(false)}>
+              OK
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

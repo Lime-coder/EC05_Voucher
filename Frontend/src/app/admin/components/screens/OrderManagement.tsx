@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Search, Eye, XCircle, DollarSign, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import { useLanguage } from '../../../shared/contexts/LanguageContext';
+import api from '../../../../lib/api';
 import {
   Button,
   Badge,
@@ -30,6 +31,8 @@ export function OrderManagement() {
   const [endDate, setEndDate] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 12;
 
   // Custom Confirm Dialog State
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -64,13 +67,13 @@ export function OrderManagement() {
   };
 
   const fetchOrders = () => {
-    let url = `/api/admin/orders?t=${Date.now()}`;
+    let url = `/admin/orders?t=${Date.now()}`;
     if (startDate && endDate) {
       url += `&startDate=${startDate}&endDate=${endDate}`;
     }
-    fetch(url, { cache: 'no-store' })
-      .then(res => res.json())
-      .then(data => {
+    api.get(url)
+      .then(res => {
+        const data = res.data;
         if (Array.isArray(data)) {
           const mapped = data.map((o: any) => ({
             ...o,
@@ -91,6 +94,11 @@ export function OrderManagement() {
     fetchOrders();
   }, [startDate, endDate]);
 
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, statusFilter, startDate, endDate]);
+
   const handleUpdateStatus = (orderId: number, nextStatus: string) => {
     const statusTextEn = nextStatus === 'PAID' ? 'process payment' : nextStatus === 'CANCELLED' ? 'cancel order' : 'refund';
     const statusTextVi = nextStatus === 'PAID' ? 'xử lý thanh toán' : nextStatus === 'CANCELLED' ? 'hủy đơn hàng' : 'hoàn tiền';
@@ -109,13 +117,9 @@ export function OrderManagement() {
       confirmMsg,
       async () => {
         try {
-          const res = await fetch(`/api/admin/orders/${orderId}/status`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status: nextStatus })
-          });
+          const res = await api.patch(`/admin/orders/${orderId}/status`, { status: nextStatus });
 
-          if (res.ok) {
+          if (res.status === 200) {
             toast.success(tText('Order status updated successfully!', 'Cập nhật trạng thái đơn hàng thành công!'));
             setOrders(prev => prev.map(o => o.rawId === orderId ? {
               ...o,
@@ -126,8 +130,7 @@ export function OrderManagement() {
             } : o));
             fetchOrders();
           } else {
-            const err = await res.json();
-            toast.error(err.error || tText('Update failed!', 'Cập nhật thất bại!'));
+            toast.error(tText('Update failed!', 'Cập nhật thất bại!'));
           }
         } catch (e) {
           console.error(e);
@@ -156,6 +159,12 @@ export function OrderManagement() {
 
     return matchesSearch && matchesStatus;
   });
+
+  const totalPages = Math.ceil(filteredOrders.length / ITEMS_PER_PAGE);
+  const paginatedOrders = filteredOrders.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  );
 
   return (
     <div className="space-y-6">
@@ -222,7 +231,7 @@ export function OrderManagement() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredOrders.map((order) => (
+            {paginatedOrders.map((order) => (
               <TableRow key={order.id} className="hover:bg-gray-50/50">
                 <TableCell className="font-medium text-gray-900">{order.id}</TableCell>
                 <TableCell>{order.customer}</TableCell>
@@ -280,7 +289,7 @@ export function OrderManagement() {
                 </TableCell>
               </TableRow>
             ))}
-            {filteredOrders.length === 0 && (
+            {paginatedOrders.length === 0 && (
               <TableRow>
                 <TableCell colSpan={7} className="text-center py-6 text-gray-500">
                   {tText("No orders found.", "Không tìm thấy đơn hàng nào.")}
@@ -290,6 +299,38 @@ export function OrderManagement() {
           </TableBody>
         </Table>
       </div>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between px-2">
+          <div className="text-sm text-gray-500">
+            {tText(
+              `Showing ${(currentPage - 1) * ITEMS_PER_PAGE + 1} to ${Math.min(currentPage * ITEMS_PER_PAGE, filteredOrders.length)} of ${filteredOrders.length} entries`,
+              `Đang hiển thị ${(currentPage - 1) * ITEMS_PER_PAGE + 1} đến ${Math.min(currentPage * ITEMS_PER_PAGE, filteredOrders.length)} trong số ${filteredOrders.length} mục`
+            )}
+          </div>
+          <div className="flex items-center space-x-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+            >
+              {tText('Previous', 'Trước')}
+            </Button>
+            <div className="text-sm font-medium">
+              {currentPage} / {totalPages}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+            >
+              {tText('Next', 'Tiếp')}
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* --- View Order Details Dialog --- */}
       <Dialog open={showDetailModal} onOpenChange={setShowDetailModal}>
@@ -328,7 +369,7 @@ export function OrderManagement() {
 
               <div className="border-t pt-3">
                 <h4 className="font-semibold text-gray-800 mb-2">{tText("Product Details", "Chi tiết sản phẩm")}</h4>
-                <div className="space-y-2">
+                <div className="max-h-48 overflow-y-auto space-y-2 pr-1">
                   {selectedOrder.items && selectedOrder.items.map((item: any, idx: number) => (
                     <div key={idx} className="flex justify-between items-center bg-gray-50 p-2.5 rounded border border-gray-100">
                       <div>

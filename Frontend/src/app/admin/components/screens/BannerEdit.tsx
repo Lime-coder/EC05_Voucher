@@ -4,6 +4,7 @@ import { ArrowLeft, Save, UploadCloud } from 'lucide-react';
 import { Button, Input } from '@voucherhub/ui';
 import { toast } from 'sonner';
 import { useLanguage } from '../../../shared/contexts/LanguageContext';
+import api from '../../../../lib/api';
 
 export function BannerEdit() {
   const { id } = useParams();
@@ -21,14 +22,19 @@ export function BannerEdit() {
     position: 'Homepage Top',
     status: 'Đang hiển thị',
     link: '',
-    imageUrl: ''
+    imageUrl: '',
+    tag: '',
+    description: '',
+    buttonText: '',
+    endDate: ''
   });
+  const [originalImageUrl, setOriginalImageUrl] = useState('');
 
   // Fetch banner data if editing
   useEffect(() => {
     if (!isNew) {
-      fetch('/api/admin/content')
-        .then(res => res.json())
+      api.get('/admin/content')
+        .then(res => res.data)
         .then(data => {
           if (data && Array.isArray(data.banners)) {
             const found = data.banners.find((b: any) => b.MaBanner === Number(id));
@@ -38,8 +44,13 @@ export function BannerEdit() {
                 position: found.ViTri || 'Homepage Top',
                 status: found.TrangThai || 'Đang hiển thị',
                 link: found.LinkURL || '',
-                imageUrl: found.HinhAnh || ''
+                imageUrl: found.HinhAnh || '',
+                tag: found.Tag || '',
+                description: found.MoTa || '',
+                buttonText: found.VanBanNut || '',
+                endDate: found.ThoiGianKetThuc ? new Date(found.ThoiGianKetThuc).toISOString().slice(0, 16) : ''
               });
+              setOriginalImageUrl(found.HinhAnh || '');
             }
           }
         })
@@ -57,6 +68,17 @@ export function BannerEdit() {
     fileInputRef.current?.click();
   };
 
+  const deleteDraftImage = async (path: string) => {
+    if (!path || path === originalImageUrl) return;
+    try {
+      await api.delete('/content/upload', {
+        data: { imagePath: path }
+      });
+    } catch (e) {
+      console.error('Failed to delete draft image', e);
+    }
+  };
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (isViewOnly) return;
     const file = e.target.files?.[0];
@@ -66,21 +88,31 @@ export function BannerEdit() {
     bodyData.append('image', file);
 
     try {
-      const response = await fetch('/api/content/upload', {
-        method: 'POST',
-        body: bodyData
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setFormData(prev => ({ ...prev, imageUrl: data.path }));
-        toast.success(tText('Image uploaded successfully!', 'Tải ảnh lên thành công!'));
-      } else {
-        toast.error(tText('Failed to upload image!', 'Tải ảnh lên thất bại!'));
+      const response = await api.post('/content/upload', bodyData);
+      const data = response.data;
+      if (formData.imageUrl && formData.imageUrl !== originalImageUrl) {
+        deleteDraftImage(formData.imageUrl);
       }
-    } catch (err) {
+      setFormData(prev => ({ ...prev, imageUrl: data.path }));
+      toast.success(tText('Image uploaded successfully!', 'Tải ảnh lên thành công!'));
+    } catch (err: any) {
       console.error('File upload error:', err);
-      toast.error(tText('An error occurred while uploading image!', 'Có lỗi xảy ra khi tải ảnh lên!'));
+      toast.error(tText('Failed to upload image!', 'Tải ảnh lên thất bại!'));
     }
+  };
+
+  const handleRemoveImage = () => {
+    if (formData.imageUrl && formData.imageUrl !== originalImageUrl) {
+      deleteDraftImage(formData.imageUrl);
+    }
+    setFormData(prev => ({...prev, imageUrl: ''}));
+  };
+
+  const handleCancel = () => {
+    if (formData.imageUrl && formData.imageUrl !== originalImageUrl) {
+      deleteDraftImage(formData.imageUrl);
+    }
+    navigate('/admin/content');
   };
 
   const handleSave = async () => {
@@ -96,28 +128,24 @@ export function BannerEdit() {
       ViTri: formData.position,
       TrangThai: formData.status,
       LinkURL: formData.link,
-      HinhAnh: formData.imageUrl
+      HinhAnh: formData.imageUrl,
+      Tag: formData.tag,
+      MoTa: formData.description,
+      ThoiGianKetThuc: formData.endDate ? new Date(formData.endDate).toISOString() : null,
+      VanBanNut: formData.buttonText
     };
 
     try {
-      const url = isNew ? '/api/admin/content' : `/api/admin/content/${id}`;
-      const method = isNew ? 'POST' : 'PUT';
+      const url = isNew ? '/admin/content' : `/admin/content/${id}`;
+      const method = isNew ? 'post' : 'put';
       
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+      await api[method](url, payload);
 
-      if (res.ok) {
-        toast.success(isNew ? tText('Banner added successfully!', 'Đã thêm banner thành công!') : tText('Banner updated successfully!', 'Đã cập nhật banner thành công!'));
-        navigate('/admin/content');
-      } else {
-        toast.error(tText('Failed to save banner!', 'Lưu banner thất bại!'));
-      }
-    } catch (err) {
+      toast.success(isNew ? tText('Banner added successfully!', 'Đã thêm banner thành công!') : tText('Banner updated successfully!', 'Đã cập nhật banner thành công!'));
+      navigate('/admin/content');
+    } catch (err: any) {
       console.error(err);
-      toast.error(tText('An error occurred while saving banner!', 'Có lỗi xảy ra khi lưu banner!'));
+      toast.error(tText('Failed to save banner!', 'Lưu banner thất bại!'));
     }
   };
 
@@ -169,6 +197,49 @@ export function BannerEdit() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
+                  <label className="text-sm font-medium">{tText('Tag / Subtitle', 'Tag / Phụ đề')}</label>
+                  <Input 
+                    value={formData.tag} 
+                    onChange={handleChange('tag')} 
+                    placeholder={tText("e.g. SUMMER SALE", "VD: SUMMER SALE")} 
+                    disabled={isViewOnly}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">{tText('Button Text', 'Văn bản nút')}</label>
+                  <Input 
+                    value={formData.buttonText} 
+                    onChange={handleChange('buttonText')} 
+                    placeholder={tText("e.g. Shop Now", "VD: Mua Ngay")} 
+                    disabled={isViewOnly}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">{tText('Description', 'Mô tả')}</label>
+                <textarea 
+                  className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
+                  value={formData.description} 
+                  onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))} 
+                  placeholder={tText("Banner description...", "Mô tả banner...")} 
+                  disabled={isViewOnly}
+                  rows={3}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">{tText('Flash Sale End Time', 'Thời gian kết thúc Flash Sale')}</label>
+                <Input 
+                  type="datetime-local"
+                  value={formData.endDate} 
+                  onChange={handleChange('endDate')} 
+                  disabled={isViewOnly}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
                   <label className="text-sm font-medium">{tText('Display Position *', 'Vị trí hiển thị *')}</label>
                   <select 
                     className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
@@ -208,7 +279,7 @@ export function BannerEdit() {
                   <img src={formData.imageUrl} alt="Banner Preview" className="w-full h-auto object-cover max-h-[300px]" />
                 </div>
                 {!isViewOnly && (
-                  <Button variant="outline" className="w-full" onClick={() => setFormData(prev => ({...prev, imageUrl: ''}))}>
+                  <Button variant="outline" className="w-full" onClick={handleRemoveImage}>
                     {tText('Change Image', 'Thay đổi hình ảnh')}
                   </Button>
                 )}
@@ -255,7 +326,7 @@ export function BannerEdit() {
                   {tText('Save Changes', 'Lưu Thay Đổi')}
                 </Button>
               )}
-              <Button variant="outline" onClick={() => navigate('/admin/content')} className="w-full" size="lg">
+              <Button variant="outline" onClick={handleCancel} className="w-full" size="lg">
                 {isViewOnly ? tText('Back', 'Quay lại') : tText('Cancel', 'Hủy bỏ')}
               </Button>
             </div>

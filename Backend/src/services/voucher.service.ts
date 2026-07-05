@@ -1,5 +1,8 @@
 import prisma from '../config/db';
 import { customAlphabet } from 'nanoid';
+import { commitVoucherImage } from '../utils/media.util';
+import { mapApiStatusToDb } from '../utils/statusMapper';
+import { VOUCHER_STATUS, VOUCHER_USAGE_STATUS } from '../constants';
 
 // Bộ ký tự an toàn (bỏ 0, O, 1, I, L)
 const SAFE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
@@ -31,11 +34,19 @@ export class VoucherService {
    * Dữ liệu gửi lên sẽ kèm TrangThaiVoucher là 'DRAFT' hoặc 'PENDING_APPROVAL'
    */
   static async createVoucher(data: any) {
-    return await prisma.voucher.create({
+    let statusDb = data.status ? mapApiStatusToDb(data.status) : VOUCHER_STATUS.DRAFT;
+
+    const partnerId = data.partnerId || 1;
+    const partner = await prisma.doiTac.findUnique({ where: { MaDoiTac: partnerId } });
+    const partnerName = partner ? partner.TenDoanhNghiep : 'Unknown';
+
+    let imageUrl = data.imageUrl !== undefined ? data.imageUrl : null;
+
+    const voucher = await prisma.voucher.create({
       data: {
         TenVoucher: data.name,
         MaDanhMuc: data.categoryId || null, // Có thể chỉnh sửa logic mapping nếu data có mảng categories
-        MaDoiTac: data.partnerId || 1, // Giả sử lấy MaDoiTac từ context người dùng hiện tại
+        MaDoiTac: partnerId, // Giả sử lấy MaDoiTac từ context người dùng hiện tại
         MoTaVoucher: data.description,
         MoTaDieuKien: data.terms,
         GiaGoc: data.originalPrice ? parseFloat(data.originalPrice) : 100,
@@ -43,35 +54,83 @@ export class VoucherService {
         SoLuongChoPhep: parseInt(data.quantity) || 0,
         ThoiGianBatDau: data.validStartDate ? new Date(data.validStartDate) : new Date(),
         ThoiGianKetThuc: data.validEndDate ? new Date(data.validEndDate) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-        TrangThaiVoucher: data.status || 'DRAFT',
+        ThoiGianBatDauBan: data.saleStartDate ? new Date(data.saleStartDate) : null,
+        ThoiGianKetThucBan: data.saleEndDate ? new Date(data.saleEndDate) : null,
+        TrangThaiVoucher: statusDb,
         ChinhSachHoanTien: data.refundPolicy || null,
         HuongDanSuDung: data.usageInstructions || null,
-        ImageUrl: data.imageUrl !== undefined ? data.imageUrl : null
+        ImageUrl: imageUrl
       }
     });
+
+    if (imageUrl && imageUrl.includes('/uploads/temp/')) {
+      const finalImageUrl = commitVoucherImage(imageUrl, voucher.VoucherID, partnerId, partnerName || 'Unknown', voucher.TenVoucher);
+      if (finalImageUrl && finalImageUrl !== imageUrl) {
+        await prisma.voucher.update({
+          where: { VoucherID: voucher.VoucherID },
+          data: { ImageUrl: finalImageUrl }
+        });
+        voucher.ImageUrl = finalImageUrl;
+      }
+    }
+
+    return voucher;
   }
 
   /**
    * Cập nhật Voucher đã có.
    */
   static async updateVoucher(id: number, data: any) {
+    let statusDb = data.status;
+    if (data.status) {
+      statusDb = mapApiStatusToDb(data.status);
+    }
+
+    const oldVoucher = await prisma.voucher.findUnique({
+      where: { VoucherID: id },
+      include: { DoiTac: true }
+    });
+
+    if (oldVoucher?.TrangThaiVoucher === VOUCHER_STATUS.REJECTED && statusDb === VOUCHER_STATUS.ACTIVE) {
+      throw new Error('Không thể tự kích hoạt lại voucher đã bị từ chối/khóa bởi hệ thống.');
+    }
+
+    let finalImageUrl = data.imageUrl;
+    if (finalImageUrl !== undefined && finalImageUrl !== oldVoucher?.ImageUrl) {
+      const partnerName = oldVoucher?.DoiTac?.TenDoanhNghiep || 'Unknown';
+      const partnerId = oldVoucher?.MaDoiTac || 1;
+      const voucherName = data.name || oldVoucher?.TenVoucher || 'Unknown';
+
+      finalImageUrl = commitVoucherImage(
+        finalImageUrl || '',
+        id,
+        partnerId,
+        partnerName,
+        voucherName,
+        oldVoucher?.ImageUrl || undefined
+      );
+    }
+
+    const dataToUpdate: any = {};
+    if (data.name !== undefined) dataToUpdate.TenVoucher = data.name;
+    if (data.categoryId !== undefined) dataToUpdate.MaDanhMuc = data.categoryId;
+    if (data.description !== undefined) dataToUpdate.MoTaVoucher = data.description;
+    if (data.terms !== undefined) dataToUpdate.MoTaDieuKien = data.terms;
+    if (data.originalPrice !== undefined) dataToUpdate.GiaGoc = parseFloat(data.originalPrice);
+    if (data.salePrice !== undefined) dataToUpdate.GiaBan = parseFloat(data.salePrice);
+    if (data.quantity !== undefined) dataToUpdate.SoLuongChoPhep = parseInt(data.quantity);
+    if (data.validStartDate !== undefined) dataToUpdate.ThoiGianBatDau = new Date(data.validStartDate);
+    if (data.validEndDate !== undefined) dataToUpdate.ThoiGianKetThuc = new Date(data.validEndDate);
+    if (data.saleStartDate !== undefined) dataToUpdate.ThoiGianBatDauBan = new Date(data.saleStartDate);
+    if (data.saleEndDate !== undefined) dataToUpdate.ThoiGianKetThucBan = new Date(data.saleEndDate);
+    if (statusDb !== undefined) dataToUpdate.TrangThaiVoucher = statusDb;
+    if (data.refundPolicy !== undefined) dataToUpdate.ChinhSachHoanTien = data.refundPolicy;
+    if (data.usageInstructions !== undefined) dataToUpdate.HuongDanSuDung = data.usageInstructions;
+    if (finalImageUrl !== undefined) dataToUpdate.ImageUrl = finalImageUrl;
+
     return await prisma.voucher.update({
       where: { VoucherID: id },
-      data: {
-        TenVoucher: data.name,
-        MaDanhMuc: data.categoryId || null,
-        MoTaVoucher: data.description,
-        MoTaDieuKien: data.terms,
-        GiaGoc: data.originalPrice ? parseFloat(data.originalPrice) : 100,
-        GiaBan: data.salePrice ? parseFloat(data.salePrice) : 0,
-        SoLuongChoPhep: parseInt(data.quantity) || 0,
-        ThoiGianBatDau: data.validStartDate ? new Date(data.validStartDate) : undefined,
-        ThoiGianKetThuc: data.validEndDate ? new Date(data.validEndDate) : undefined,
-        TrangThaiVoucher: data.status,
-        ChinhSachHoanTien: data.refundPolicy !== undefined ? data.refundPolicy : undefined,
-        HuongDanSuDung: data.usageInstructions !== undefined ? data.usageInstructions : undefined,
-        ImageUrl: data.imageUrl !== undefined ? data.imageUrl : undefined
-      }
+      data: dataToUpdate
     });
   }
 
@@ -79,9 +138,15 @@ export class VoucherService {
    * Xóa mềm Voucher (Chuyển trạng thái thành DELETED)
    */
   static async softDeleteVoucher(id: number) {
+    const voucher = await prisma.voucher.findUnique({ where: { VoucherID: id } });
+    if (voucher?.ImageUrl) {
+      const { deleteMediaFile } = require('../utils/media.util');
+      deleteMediaFile(voucher.ImageUrl);
+    }
+
     return await prisma.voucher.update({
       where: { VoucherID: id },
-      data: { TrangThaiVoucher: 'DELETED' }
+      data: { TrangThaiVoucher: VOUCHER_STATUS.DELETED, ImageUrl: null }
     });
   }
 
@@ -91,7 +156,7 @@ export class VoucherService {
   static async restoreVoucher(id: number) {
     return await prisma.voucher.update({
       where: { VoucherID: id },
-      data: { TrangThaiVoucher: 'DRAFT' }
+      data: { TrangThaiVoucher: VOUCHER_STATUS.DRAFT }
     });
   }
 
@@ -128,7 +193,7 @@ export class VoucherService {
             }
           }
         }
-      } as any
+      }
     });
 
     if (!maVoucher || !maVoucher.ChiTietDonHang || !maVoucher.ChiTietDonHang.Voucher) {
@@ -148,9 +213,11 @@ export class VoucherService {
 
     // Determine status
     let status = 'valid';
-    if (maVoucher.TrangThaiSuDung === 'Đã sử dụng') {
+    if (maVoucher.TrangThaiSuDung === 'Hủy voucher') {
+      status = 'refunded';
+    } else if (maVoucher.TrangThaiSuDung === VOUCHER_USAGE_STATUS.USED || maVoucher.TrangThaiSuDung === 'USED') {
       status = 'used';
-    } else if (voucher.ThoiGianKetThuc < new Date() || maVoucher.TrangThaiSuDung === 'Hết hạn') {
+    } else if (voucher.ThoiGianKetThuc < new Date() || maVoucher.TrangThaiSuDung === VOUCHER_USAGE_STATUS.EXPIRED || maVoucher.TrangThaiSuDung === 'EXPIRED') {
       status = 'expired';
     }
 
@@ -166,7 +233,7 @@ export class VoucherService {
       validUntil: voucher.ThoiGianKetThuc.toISOString(),
       status: status,
       usedDate: maVoucher.ThoiDiemSuDung?.toISOString(),
-      branch: (maVoucher as any).ChiNhanh?.TenChiNhanh || 'Tất cả chi nhánh'
+      branch: maVoucher.ChiNhanh?.TenChiNhanh || 'Tất cả chi nhánh'
     };
   }
 
@@ -189,11 +256,15 @@ export class VoucherService {
       throw new Error('Voucher đã hết hạn sử dụng');
     }
 
+    if (result.status === 'refunded') {
+      throw new Error('Voucher đã bị hủy hoặc hoàn tiền');
+    }
+
     // Update status in db
     await prisma.maVoucher.update({
       where: { SoMaVoucher: code },
       data: {
-        TrangThaiSuDung: 'Đã sử dụng',
+        TrangThaiSuDung: VOUCHER_USAGE_STATUS.USED,
         ThoiDiemSuDung: new Date(),
         // @ts-ignore
         MaChiNhanhSuDung: branchId || null
@@ -209,7 +280,7 @@ export class VoucherService {
   static async getVerificationHistory(partnerId: number) {
     const usedVouchers: any[] = await prisma.maVoucher.findMany({
       where: {
-        TrangThaiSuDung: 'Đã sử dụng',
+        TrangThaiSuDung: VOUCHER_USAGE_STATUS.USED,
         ChiTietDonHang: {
           Voucher: {
             MaDoiTac: partnerId
@@ -224,18 +295,29 @@ export class VoucherService {
         ChiNhanh: true,
         ChiTietDonHang: {
           include: {
-            Voucher: true
+            Voucher: true,
+            DonHang: {
+              include: {
+                TaiKhoan: {
+                  include: {
+                    KhachHang: true
+                  }
+                }
+              }
+            }
           }
         }
-      } as any
+      }
     });
 
     return usedVouchers.map(mv => ({
       code: mv.SoMaVoucher,
       voucherName: mv.ChiTietDonHang?.Voucher?.TenVoucher || 'Không xác định',
       time: mv.ThoiDiemSuDung?.toISOString(),
-      status: 'verified', // If it's in this list, it was successfully verified and used
-      branch: (mv as any).ChiNhanh?.TenChiNhanh || 'Tất cả chi nhánh'
+      status: 'verified',
+      branch: mv.ChiNhanh?.TenChiNhanh || 'Tất cả chi nhánh',
+      orderId: mv.ChiTietDonHang?.DonHang?.MaDonHang || null,
+      customerName: mv.ChiTietDonHang?.DonHang?.TaiKhoan?.HoTenNguoiDung || 'Khách hàng ẩn danh'
     }));
   }
 }

@@ -4,8 +4,14 @@ import jwt from 'jsonwebtoken';
 import { LogService } from './log.service';
 import { AnomalyService } from './anomaly.service';
 import { AUDIT_ACTIONS, LOG_STATUS } from '../config/audit.config';
+import { ACCOUNT_STATUS } from '../constants';
+import { normalizeGender } from '../query_constraints';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_key_for_voucherhub_change_in_production';
+
+const JWT_SECRET = process.env.JWT_SECRET!;
+if (!JWT_SECRET) {
+  throw new Error('JWT_SECRET is not defined in environment variables');
+}
 const JWT_EXPIRES_IN = '30m';
 
 export class AuthService {
@@ -29,7 +35,7 @@ export class AuthService {
         MatKhau: hashedPassword,
         Email: data.Email,
         HoTenNguoiDung: data.HoTenNguoiDung,
-        TrangThaiTaiKhoan: 'ACTIVE',
+        TrangThaiTaiKhoan: ACCOUNT_STATUS.ACTIVE,
       },
     });
 
@@ -61,10 +67,10 @@ export class AuthService {
     });
 
     if (existingUser) {
-      if (existingUser.TenDangNhap === username) {
+      if (existingUser.TenDangNhap.toLowerCase() === username.toLowerCase()) {
         throw new Error('Username is already taken');
       }
-      if (existingUser.Email === email) {
+      if (existingUser.Email.toLowerCase() === email.toLowerCase()) {
         throw new Error('Email is already registered');
       }
     }
@@ -93,7 +99,7 @@ export class AuthService {
           MatKhau: hashedPassword,
           Email: data.Email,
           HoTenNguoiDung: data.HoTenNguoiDung,
-          TrangThaiTaiKhoan: 'ACTIVE',
+          TrangThaiTaiKhoan: ACCOUNT_STATUS.ACTIVE,
         },
       });
 
@@ -102,7 +108,7 @@ export class AuthService {
           SDT_KH: data.SDT,
           IDTaiKhoan: taiKhoan.IDTaiKhoan,
           NgaySinh: data.NgaySinh ? new Date(data.NgaySinh) : undefined,
-          GioiTinh: data.GioiTinh,
+          GioiTinh: data.GioiTinh ? normalizeGender(data.GioiTinh) : undefined,
           DiaChiKhachHang: data.DiaChi,
         },
       });
@@ -149,7 +155,7 @@ export class AuthService {
           MatKhau: hashedPassword,
           Email: data.Email,
           HoTenNguoiDung: data.TenDoanhNghiep,
-          TrangThaiTaiKhoan: 'PENDING',
+          TrangThaiTaiKhoan: ACCOUNT_STATUS.PENDING,
         },
       });
 
@@ -159,8 +165,9 @@ export class AuthService {
           MaSoThue: data.MaSoThue,
           CaNhanDaiDien: data.CaNhanDaiDien,
           LinhVucKinhDoanh: data.LinhVucKinhDoanh,
-          TrangThaiPheDuyet: 'PENDING',
-          TrangThaiHoatDong: 'ACTIVE',
+          TrangThai: ACCOUNT_STATUS.PENDING,
+          EmailLienHe: data.EmailLienHe || 'contact@domain.com',
+          SDTLienHe: data.SDTLienHe || '0000000000',
         },
       });
 
@@ -200,12 +207,12 @@ export class AuthService {
       include: {
         Admin: true,
         KhachHang: true,
-        NhanVienDoiTacs: true,
+        NhanVienDoiTacs: { include: { DoiTac: true } },
       },
     });
 
-    // ── Handle: user doesn't exist ──
-    if (!user) {
+    // ── Handle: user doesn't exist or case mismatch ──
+    if (!user || user.TenDangNhap !== username) {
       // Log the failed attempt — account does not exist
       await LogService.createLog({
         IDTaiKhoan: null,
@@ -256,15 +263,32 @@ export class AuthService {
       throw new Error('Invalid credentials');
     }
 
+    const currentRole = this._determineRole(user);
+
+    // ── Handle: Partner is locked ──
+    if (currentRole === 'partner' && user.NhanVienDoiTacs?.[0]?.DoiTac) {
+      if (user.NhanVienDoiTacs[0].DoiTac.TrangThai === ACCOUNT_STATUS.LOCKED) {
+        await LogService.createLog({
+          IDTaiKhoan: user.IDTaiKhoan,
+          HanhDong: AUDIT_ACTIONS.DANG_NHAP_THAT_BAI,
+          DoiTuong: username,
+          ChiTiet: `Tài khoản tồn tại: Có, Vai trò: ${currentRole}. Đăng nhập thất bại do Đối tác chủ quản đang bị khóa.`,
+          DiaChiIP: ip,
+          TrangThai: LOG_STATUS.FAILURE,
+        });
+        throw new Error('Your partner enterprise account is currently locked. Please contact support.');
+      }
+    }
+
     // ── Handle: not ACTIVE account ──
-    if (user.TrangThaiTaiKhoan !== 'ACTIVE') {
+    if (user.TrangThaiTaiKhoan !== ACCOUNT_STATUS.ACTIVE) {
       const role = this._determineRole(user);
 
       await LogService.createLog({
         IDTaiKhoan: user.IDTaiKhoan,
         HanhDong: AUDIT_ACTIONS.DANG_NHAP_THAT_BAI,
         DoiTuong: username,
-        ChiTiet: `Tài khoản tồn tại: Có, Vai trò: ${role}. Đăng nhập thất bại do tài khoản không ở trạng thái ACTIVE (Trạng thái hiện tại: ${user.TrangThaiTaiKhoan}).`,
+        ChiTiet: `Tài khoản tồn tại: Có, Vai trò: ${role}. Đăng nhập thất bại do tài khoản không ở trạng thái Hoạt động (Trạng thái hiện tại: ${user.TrangThaiTaiKhoan}).`,
         DiaChiIP: ip,
         TrangThai: LOG_STATUS.FAILURE,
       });
@@ -275,18 +299,20 @@ export class AuthService {
     // ── Handle: successful login ──
     const role = this._determineRole(user);
     const { MatKhau, Admin, KhachHang, NhanVienDoiTacs, ...safeUser } = user;
+    const MaDoiTac = role === 'partner' && NhanVienDoiTacs && NhanVienDoiTacs.length > 0 ? NhanVienDoiTacs[0].MaDoiTac : undefined;
 
-    const token = jwt.sign(
-      {
-        IDTaiKhoan: user.IDTaiKhoan,
-        TenDangNhap: user.TenDangNhap,
-        Email: user.Email,
-        HoTenNguoiDung: user.HoTenNguoiDung,
-        role,
-      },
-      JWT_SECRET,
-      { expiresIn: JWT_EXPIRES_IN }
-    );
+    const tokenPayload: any = {
+      IDTaiKhoan: user.IDTaiKhoan,
+      TenDangNhap: user.TenDangNhap,
+      Email: user.Email,
+      HoTenNguoiDung: user.HoTenNguoiDung,
+      role,
+    };
+    if (MaDoiTac) {
+      tokenPayload.MaDoiTac = MaDoiTac;
+    }
+
+    const token = jwt.sign(tokenPayload, process.env.JWT_SECRET!, { expiresIn: JWT_EXPIRES_IN });
 
     // Audit log: successful login
     await LogService.createLog({
@@ -298,7 +324,25 @@ export class AuthService {
       TrangThai: LOG_STATUS.SUCCESS,
     });
 
-    return { token, user: { ...safeUser, role } };
+    return { token, user: { ...safeUser, role, MaDoiTac, AvatarUrl: (user.KhachHang as any)?.AvatarUrl || undefined } };
+  }
+
+  // ── Verify Me ───────────────────────────────────────────────────
+
+  static async me(userId: number, role: string) {
+    const user = await prisma.taiKhoan.findUnique({
+      where: { IDTaiKhoan: userId },
+      include: { 
+        NhanVienDoiTacs: true,
+        KhachHang: true
+      }
+    });
+    if (!user) throw new Error('User not found');
+
+    const { MatKhau, NhanVienDoiTacs, ...safeUser } = user;
+    const MaDoiTac = role === 'partner' && NhanVienDoiTacs && NhanVienDoiTacs.length > 0 ? NhanVienDoiTacs[0].MaDoiTac : undefined;
+
+    return { user: { ...safeUser, role, MaDoiTac, AvatarUrl: (user.KhachHang as any)?.AvatarUrl || undefined } };
   }
 
   // ── Logout ──────────────────────────────────────────────────────

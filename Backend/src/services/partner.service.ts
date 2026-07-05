@@ -1,7 +1,60 @@
 import prisma from '../config/db';
+import bcrypt from 'bcrypt';
 import { getTarget, setTarget } from '../config/revenueTargetStore';
+import { VOUCHER_STATUS, PAYMENT_STATUS } from '../constants';
 
 export class PartnerService {
+  /**
+   * Lấy danh sách giao dịch khách hàng mua voucher của Đối tác
+   */
+  static async getPurchases(partnerId: number) {
+    const items = await prisma.chiTietDonHang.findMany({
+      where: {
+        Voucher: { MaDoiTac: partnerId }
+      },
+      include: {
+        DonHang: {
+          include: {
+            TaiKhoan: {
+              include: {
+                KhachHang: true
+              }
+            }
+          }
+        },
+        Voucher: true
+      },
+      orderBy: {
+        DonHang: {
+          MaDonHang: 'desc'
+        }
+      }
+    });
+
+    return items.map((item: any) => {
+      let status = 'Pending';
+      if (item.DonHang?.TrangThaiThanhToan === PAYMENT_STATUS.PAID || item.DonHang?.TrangThaiThanhToan === 'Đã thanh toán') {
+        status = 'Paid';
+      } else if (item.DonHang?.TrangThaiDonHang === 'Đã hủy' || item.DonHang?.TrangThaiDonHang === 'Huỷ bỏ') {
+        status = 'Cancelled';
+      }
+      
+      return {
+        id: `ORD-${item.DonHang?.MaDonHang}-${item.MaCTDonHang}`,
+        orderId: item.DonHang?.MaDonHang,
+        customerName: item.DonHang?.TaiKhoan?.HoTenNguoiDung || 'Khách vãng lai',
+        customerPhone: item.DonHang?.TaiKhoan?.KhachHang?.SDT_KH || 'N/A',
+        customerEmail: item.DonHang?.TaiKhoan?.Email || '',
+        voucherName: item.Voucher?.TenVoucher || '',
+        quantity: item.SoLuongMua,
+        totalAmount: Number(item.ThanhTien || 0),
+        paymentMethod: item.DonHang?.PhuongThucThanhToan || 'N/A',
+        status: status,
+        date: item.DonHang?.ThoiGianThanhToan || new Date().toISOString()
+      };
+    });
+  }
+
   /**
    * Lấy thông tin hồ sơ Đối tác
    */
@@ -23,12 +76,12 @@ export class PartnerService {
       businessType: partner.LinhVucKinhDoanh || '',
       taxCode: partner.MaSoThue || '',
       representativeName: partner.CaNhanDaiDien || '',
-      ...(email && { email }),
-      website: '',
-      address: '',
-      phone: '',
-      representativePhone: '',
-      representativeEmail: '',
+      email: (partner as any).EmailLienHe || email || '',
+      website: (partner as any).Website || '',
+      address: (partner as any).DiaChiTruSo || '',
+      phone: (partner as any).SDTLienHe || '',
+      representativePhone: (partner as any).SDTDaiDien || '',
+      representativeEmail: (partner as any).EmailDaiDien || '',
       avatarUrl: (partner as any).AvatarUrl ? `http://localhost:5000${(partner as any).AvatarUrl}` : ''
     };
   }
@@ -44,8 +97,14 @@ export class PartnerService {
         TenDoanhNghiep: data.businessName,
         LinhVucKinhDoanh: data.businessType,
         MaSoThue: data.taxCode,
-        CaNhanDaiDien: data.representativeName
-      }
+        CaNhanDaiDien: data.representativeName,
+        Website: data.website,
+        DiaChiTruSo: data.address,
+        SDTLienHe: data.phone,
+        EmailLienHe: data.email,
+        SDTDaiDien: data.representativePhone,
+        EmailDaiDien: data.representativeEmail
+      } as any
     });
   }
 
@@ -79,17 +138,28 @@ export class PartnerService {
     const taiKhoan = partner.NhanViens[0].TaiKhoan;
     if (!taiKhoan) throw new Error("Tài khoản chưa được khởi tạo.");
 
-    // Trong hệ thống thực tế nên dùng bcrypt.compare
-    // Nếu db lưu plain text (vì đang mock), ta so sánh trực tiếp
-    if (taiKhoan.MatKhau !== current) {
-      throw new Error("Mật khẩu hiện tại không đúng.");
+    const isMatch = await bcrypt.compare(current, taiKhoan.MatKhau);
+    if (!isMatch) {
+      throw new Error("error.old_password_incorrect");
     }
 
-    // Hash mật khẩu mới (nếu dùng bcrypt) hoặc lưu plain text
-    // Vì chưa import bcrypt trong db, giả sử lưu plain text (tạm thời)
+    if (newPass.length < 8) {
+      throw new Error("error.pwd_length");
+    }
+    if (!/[A-Z]/.test(newPass)) {
+      throw new Error("error.pwd_upper");
+    }
+    if (!/[a-z]/.test(newPass)) {
+      throw new Error("error.pwd_lower");
+    }
+    if (!/[0-9]/.test(newPass)) {
+      throw new Error("error.pwd_digit");
+    }
+
+    const hashedPassword = await bcrypt.hash(newPass, 10);
     await prisma.taiKhoan.update({
       where: { IDTaiKhoan: taiKhoan.IDTaiKhoan },
-      data: { MatKhau: newPass }
+      data: { MatKhau: hashedPassword }
     });
 
     return true;
@@ -116,7 +186,7 @@ export class PartnerService {
           MaDoiTac: partnerId,
         },
         DonHang: {
-          TrangThaiThanhToan: 'PAID',
+          TrangThaiThanhToan: PAYMENT_STATUS.PAID,
         },
       },
     });
@@ -125,7 +195,7 @@ export class PartnerService {
     const pendingVouchers = await prisma.voucher.count({
       where: {
         MaDoiTac: partnerId,
-        TrangThaiVoucher: 'PENDING_APPROVAL',
+        TrangThaiVoucher: VOUCHER_STATUS.PENDING,
       },
     });
 
@@ -133,7 +203,7 @@ export class PartnerService {
     const activeVouchers = await prisma.voucher.count({
       where: {
         MaDoiTac: partnerId,
-        TrangThaiVoucher: 'ACTIVE',
+        TrangThaiVoucher: VOUCHER_STATUS.ACTIVE,
       },
     });
 
@@ -173,7 +243,7 @@ export class PartnerService {
           ThoiGianThanhToan: {
             gte: sixMonthsAgo
           },
-          TrangThaiThanhToan: 'PAID',
+          TrangThaiThanhToan: PAYMENT_STATUS.PAID,
         }
       },
       include: {
@@ -240,7 +310,7 @@ export class PartnerService {
           Voucher: { MaDoiTac: partnerId },
           DonHang: {
             ThoiGianThanhToan: { gte: start, lte: end },
-            TrangThaiThanhToan: 'PAID'
+            TrangThaiThanhToan: PAYMENT_STATUS.PAID
           }
         },
         include: { DonHang: true }
@@ -263,7 +333,7 @@ export class PartnerService {
               DonHang: {
                 IDTaiKhoan: customerId,
                 ThoiGianThanhToan: { lt: start },
-                TrangThaiThanhToan: 'PAID',
+                TrangThaiThanhToan: PAYMENT_STATUS.PAID,
               }
             }
           });
@@ -362,7 +432,7 @@ export class PartnerService {
           Voucher: { MaDoiTac: partnerId },
           DonHang: {
             ThoiGianThanhToan: { gte: yearAgo },
-            TrangThaiThanhToan: 'PAID'
+            TrangThaiThanhToan: PAYMENT_STATUS.PAID
           }
         }
       });
@@ -468,5 +538,87 @@ export class PartnerService {
     if (target < 0) throw new Error('Mục tiêu phải >= 0');
     setTarget(partnerId, timeRange, target);
     return { success: true, timeRange, target };
+  }
+
+  /**
+   * Tạo tài khoản nhân viên đối tác
+   */
+  static async getStaff(partnerId: number) {
+    const staff = await prisma.nhanVienDoiTac.findMany({
+      where: { MaDoiTac: partnerId },
+      include: {
+        TaiKhoan: true
+      }
+    });
+
+    return staff.map((s) => ({
+      id: s.IDNhanVien,
+      name: s.TaiKhoan?.HoTenNguoiDung || '',
+      email: s.TaiKhoan?.Email || '',
+      phone: '', // SDT was removed from TaiKhoan
+      position: s.ChucVu || 'Nhân viên',
+      branch: 'Tất cả chi nhánh', // Simplification for now
+      status: s.TaiKhoan?.TrangThaiTaiKhoan || 'Hoạt động',
+      username: s.TaiKhoan?.TenDangNhap || ''
+    }));
+  }
+
+  static async createStaff(partnerId: number, data: any) {
+    // Validate if partner exists
+    const partner = await prisma.doiTac.findUnique({
+      where: { MaDoiTac: partnerId }
+    });
+    if (!partner) throw new Error('Đối tác không tồn tại');
+
+    // Validate Username
+    if (data.username.includes(' ')) {
+      throw new Error('Tên đăng nhập không được chứa khoảng trắng');
+    }
+
+    // Validate Password
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+    if (!passwordRegex.test(data.password)) {
+      throw new Error('Mật khẩu phải dài ít nhất 8 ký tự, gồm cả chữ hoa, chữ thường và chữ số');
+    }
+
+    // Check if username/email exists
+    const existingUsername = await prisma.taiKhoan.findUnique({ where: { TenDangNhap: data.username } });
+    if (existingUsername) throw new Error('Tên đăng nhập đã tồn tại');
+
+    const existingEmail = await prisma.taiKhoan.findUnique({ where: { Email: data.email } });
+    if (existingEmail) throw new Error('Email đã tồn tại');
+
+    const hashedPassword = await bcrypt.hash(data.password, 10);
+
+    // Create TaiKhoan and NhanVienDoiTac in a transaction
+    return await prisma.$transaction(async (tx) => {
+      const newAccount = await tx.taiKhoan.create({
+        data: {
+          TenDangNhap: data.username,
+          MatKhau: hashedPassword,
+          Email: data.email,
+          HoTenNguoiDung: data.fullName,
+          TrangThaiTaiKhoan: 'Hoạt động',
+          LoaiTK: 'DoiTac'
+        }
+      });
+
+      const newStaff = await tx.nhanVienDoiTac.create({
+        data: {
+          IDTaiKhoan: newAccount.IDTaiKhoan,
+          MaDoiTac: partnerId,
+          ChucVu: data.position || 'Nhân viên'
+        }
+      });
+
+      return {
+        IDTaiKhoan: newAccount.IDTaiKhoan,
+        IDNhanVien: newStaff.IDNhanVien,
+        TenDangNhap: newAccount.TenDangNhap,
+        Email: newAccount.Email,
+        HoTenNguoiDung: newAccount.HoTenNguoiDung,
+        ChucVu: newStaff.ChucVu
+      };
+    });
   }
 }

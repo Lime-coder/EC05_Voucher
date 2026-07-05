@@ -7,6 +7,7 @@ import {
   Input,
   Badge,
 } from '@voucherhub/ui';
+import api from '../../../../lib/api';
 
 export function AdminProfile() {
   const { language } = useLanguage();
@@ -24,8 +25,8 @@ export function AdminProfile() {
   });
 
   useEffect(() => {
-    fetch('/api/admin/profile')
-      .then(res => res.json())
+    api.get('/admin/profile')
+      .then(res => res.data)
       .then(data => {
         if (data && !data.error) {
           setProfileData(data);
@@ -42,23 +43,15 @@ export function AdminProfile() {
 
   const handleProfileSave = async () => {
     try {
-      const res = await fetch('/api/admin/profile', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(profileData)
-      });
-      if (res.ok) {
-        setIsEditing(false);
-        toast.success(
-          tText('Profile updated successfully!', 'Cập nhật thông tin hồ sơ thành công!')
-        );
-      } else {
-        const data = await res.json();
-        toast.error(data.error || tText('Failed to update profile!', 'Cập nhật hồ sơ thất bại!'));
-      }
-    } catch (e) {
+      await api.put('/admin/profile', profileData);
+      setIsEditing(false);
+      toast.success(
+        tText('Profile updated successfully!', 'Cập nhật thông tin hồ sơ thành công!')
+      );
+    } catch (e: any) {
       console.error(e);
-      toast.error(tText('An error occurred!', 'Có lỗi xảy ra!'));
+      const errorMsg = e.response?.data?.error;
+      toast.error(errorMsg ? tText(errorMsg, errorMsg) : tText('Failed to update profile!', 'Cập nhật hồ sơ thất bại!'));
     }
   };
 
@@ -73,25 +66,31 @@ export function AdminProfile() {
       return;
     }
 
+
     try {
-      const res = await fetch('/api/admin/profile/password', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          currentPassword: pwdForm.currentPassword,
-          newPassword: pwdForm.newPassword
-        })
+      await api.put('/admin/profile/password', {
+        currentPassword: pwdForm.currentPassword,
+        newPassword: pwdForm.newPassword
       });
-      if (res.ok) {
-        toast.success(tText('Password updated successfully!', 'Đổi mật khẩu thành công!'));
-        setPwdForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
-      } else {
-        const data = await res.json();
-        toast.error(data.error || tText('Failed to update password!', 'Đổi mật khẩu thất bại!'));
-      }
-    } catch (err) {
+      toast.success(tText('Password updated successfully!', 'Đổi mật khẩu thành công!'));
+      setPwdForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+    } catch (err: any) {
       console.error(err);
-      toast.error(tText('An error occurred!', 'Có lỗi xảy ra!'));
+      let errorMsg = err.response?.data?.error;
+      
+      if (errorMsg === 'Incorrect current password') {
+        errorMsg = tText('Incorrect current password', 'Mật khẩu hiện tại không đúng');
+      } else if (errorMsg === 'Password must be at least 8 characters') {
+        errorMsg = tText('Password must be at least 8 characters', 'Mật khẩu phải có ít nhất 8 ký tự');
+      } else if (errorMsg === 'Must contain at least one uppercase letter') {
+        errorMsg = tText('Must contain at least one uppercase letter', 'Mật khẩu phải chứa ít nhất một chữ hoa');
+      } else if (errorMsg === 'Must contain at least one lowercase letter') {
+        errorMsg = tText('Must contain at least one lowercase letter', 'Mật khẩu phải chứa ít nhất một chữ thường');
+      } else if (errorMsg === 'Must contain at least one digit') {
+        errorMsg = tText('Must contain at least one digit', 'Mật khẩu phải chứa ít nhất một chữ số');
+      }
+
+      toast.error(errorMsg ? errorMsg : tText('Failed to update password!', 'Đổi mật khẩu thất bại!'));
     }
   };
 

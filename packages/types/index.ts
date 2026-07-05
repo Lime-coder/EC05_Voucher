@@ -22,6 +22,8 @@ export interface PartnerVoucher {
   categoryId?: number;
   validStartDateRaw?: string;
   validEndDateRaw?: string;
+  saleStartDateRaw?: string;
+  saleEndDateRaw?: string;
   imageUrl?: string;
   refundPolicy?: string;
   usageInstructions?: string;
@@ -32,7 +34,7 @@ export interface StatusConfig {
   color: 'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning' | 'error';
 }
 
-export type VerificationStatus = 'valid' | 'used' | 'expired' | 'invalid';
+export type VerificationStatus = 'valid' | 'used' | 'expired' | 'invalid' | 'refunded';
 
 export interface VoucherCode {
   code: string;
@@ -54,6 +56,8 @@ export interface RecentVerification {
   time: string;
   status: 'verified' | 'rejected';
   branch?: string;
+  orderId?: number;
+  customerName?: string;
 }
 
 export interface Branch {

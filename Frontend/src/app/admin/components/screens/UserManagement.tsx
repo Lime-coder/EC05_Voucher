@@ -7,6 +7,7 @@ import {
   TableBody, TableCell, Dialog, DialogContent, DialogHeader,
   DialogTitle, DialogFooter,
 } from '@voucherhub/ui';
+import api from '../../../../lib/api';
 
 export function UserManagement() {
   const { language } = useLanguage();
@@ -31,8 +32,8 @@ export function UserManagement() {
   const itemsPerPage = 10;
 
   const fetchUsers = () => {
-    fetch(`/api/admin/users?t=${Date.now()}`, { cache: 'no-store' })
-      .then(r => r.json())
+    api.get(`/admin/users?t=${Date.now()}`)
+      .then(r => r.data)
       .then(data => {
         if (Array.isArray(data)) setUsers(data);
       })
@@ -67,38 +68,24 @@ export function UserManagement() {
   };
 
   const confirmLock = async () => {
-    if (!lockReason.trim()) {
-      toast.error(t('Please enter a lock reason', 'Vui lòng nhập lý do khóa'));
-      return;
-    }
     try {
-      const res = await fetch(`/api/admin/users/${selectedUser.id}/toggle`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason: lockReason })
-      });
-      if (res.ok) {
-        toast.success(t(`Locked account: ${selectedUser.name}`, `Đã khóa tài khoản: ${selectedUser.name}`));
-        setShowLockModal(false);
-        setUsers(prev => prev.map(u => u.id === selectedUser.id ? { ...u, status: 'INACTIVE' } : u));
-      } else {
-        const err = await res.json();
-        toast.error(err.error || t('Failed!', 'Thất bại!'));
-      }
-    } catch { toast.error(t('Error occurred', 'Có lỗi xảy ra')); }
+      await api.patch(`/admin/users/${selectedUser.id}/toggle`, { reason: lockReason });
+      toast.success(t(`Locked account: ${selectedUser.name}`, `Đã khóa tài khoản: ${selectedUser.name}`));
+      setShowLockModal(false);
+      setUsers(prev => prev.map(u => u.id === selectedUser.id ? { ...u, status: 'INACTIVE' } : u));
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || t('Failed!', 'Thất bại!'));
+    }
   };
 
   const handleUnlock = async (user: any) => {
     try {
-      const res = await fetch(`/api/admin/users/${user.id}/toggle`, { method: 'PATCH' });
-      if (res.ok) {
-        toast.success(t(`Unlocked: ${user.name}`, `Đã mở khóa: ${user.name}`));
-        setUsers(prev => prev.map(u => u.id === user.id ? { ...u, status: 'ACTIVE' } : u));
-      } else {
-        const err = await res.json();
-        toast.error(err.error || t('Failed!', 'Thất bại!'));
-      }
-    } catch { toast.error(t('Error occurred', 'Có lỗi xảy ra')); }
+      await api.patch(`/admin/users/${user.id}/toggle`);
+      toast.success(t(`Unlocked: ${user.name}`, `Đã mở khóa: ${user.name}`));
+      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, status: 'ACTIVE' } : u));
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || t('Failed!', 'Thất bại!'));
+    }
   };
 
   const statusBadge = (status: string) => {
@@ -139,6 +126,7 @@ export function UserManagement() {
             <TableRow className="bg-gray-50/50">
               <TableHead>{t('No.', 'STT')}</TableHead>
               <TableHead>{t('Name', 'Họ tên')}</TableHead>
+              <TableHead>{t('Username', 'Tên đăng nhập')}</TableHead>
               <TableHead>{t('Email', 'Email')}</TableHead>
               <TableHead>{t('Phone', 'SĐT')}</TableHead>
               <TableHead>{t('Account Type', 'Loại tài khoản')}</TableHead>
@@ -151,6 +139,7 @@ export function UserManagement() {
               <TableRow key={user.id} className="hover:bg-gray-50/50">
                 <TableCell className="text-gray-500">{(currentPage - 1) * itemsPerPage + idx + 1}</TableCell>
                 <TableCell className="font-medium text-gray-900">{user.name}</TableCell>
+                <TableCell>{user.username}</TableCell>
                 <TableCell>{user.email}</TableCell>
                 <TableCell>{user.phone || t('N/A', 'Chưa cung cấp')}</TableCell>
                 {/* Loại tài khoản */}
@@ -179,7 +168,7 @@ export function UserManagement() {
               </TableRow>
             ))}
             {currentUsers.length === 0 && (
-              <TableRow><TableCell colSpan={7} className="text-center py-6 text-gray-500">{t('No users found.', 'Không tìm thấy người dùng.')}</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="text-center py-6 text-gray-500">{t('No users found.', 'Không tìm thấy người dùng.')}</TableCell></TableRow>
             )}
           </TableBody>
         </Table>
@@ -200,12 +189,7 @@ export function UserManagement() {
           <DialogHeader><DialogTitle className="text-primary">{t('Confirm Account Lock', 'Xác nhận khóa tài khoản')}</DialogTitle></DialogHeader>
           <div className="py-4">
             <p className="text-gray-700 mb-4">{t('Lock account of', 'Khóa tài khoản của')} <strong>{selectedUser?.name}</strong>?</p>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">{t('Reason', 'Lý do')} <span className="text-red-500">*</span></label>
-              <textarea value={lockReason} onChange={e => setLockReason(e.target.value)}
-                placeholder={t('Enter reason...', 'Nhập lý do...')}
-                className="w-full px-3 py-2 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-primary resize-none text-sm" rows={4} />
-            </div>
+
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowLockModal(false)}>{t('Cancel', 'Hủy')}</Button>
@@ -240,6 +224,7 @@ export function UserManagement() {
             <div className="py-4 space-y-3 text-sm">
               {[
                 [t('Full Name', 'Họ và tên'), selectedUser.name],
+                [t('Username', 'Tên đăng nhập'), selectedUser.username],
                 ['Email', selectedUser.email],
                 [t('Phone', 'Số điện thoại'), selectedUser.phone || t('N/A', 'Chưa cung cấp')],
                 [t('Account Type', 'Loại tài khoản'), selectedUser.accountType],

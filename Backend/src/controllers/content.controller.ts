@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import prisma from '../config/db';
+import { VOUCHER_STATUS } from '../constants';
 
 // === FAQ ===
 export const getFAQs = async (req: Request, res: Response) => {
@@ -7,7 +8,8 @@ export const getFAQs = async (req: Request, res: Response) => {
     const faqs = await prisma.fAQ.findMany({ orderBy: { ThuTu: 'asc' } });
     res.json(faqs);
   } catch (error) {
-    res.status(500).json({ error: (error as Error).message });
+    console.error('Server error:', error);
+    res.status(500).json({ errorCode: 'ERR_500', message: 'An unknown error occurred. Please contact support.', details: error instanceof Error ? error.message : String(error) });
   }
 };
 
@@ -25,7 +27,8 @@ export const createFAQ = async (req: Request, res: Response) => {
     });
     res.status(201).json(faq);
   } catch (error) {
-    res.status(500).json({ error: (error as Error).message });
+    console.error('Server error:', error);
+    res.status(500).json({ errorCode: 'ERR_500', message: 'An unknown error occurred. Please contact support.', details: error instanceof Error ? error.message : String(error) });
   }
 };
 
@@ -42,7 +45,8 @@ export const updateFAQ = async (req: Request, res: Response) => {
     });
     res.json(faq);
   } catch (error) {
-    res.status(500).json({ error: (error as Error).message });
+    console.error('Server error:', error);
+    res.status(500).json({ errorCode: 'ERR_500', message: 'An unknown error occurred. Please contact support.', details: error instanceof Error ? error.message : String(error) });
   }
 };
 
@@ -50,9 +54,10 @@ export const deleteFAQ = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     await prisma.fAQ.delete({ where: { MaFAQ: Number(id) } });
-    res.json({ message: 'Đã xóa' });
+    res.json({ message: 'Deleted successfully' });
   } catch (error) {
-    res.status(500).json({ error: (error as Error).message });
+    console.error('Server error:', error);
+    res.status(500).json({ errorCode: 'ERR_500', message: 'An unknown error occurred. Please contact support.', details: error instanceof Error ? error.message : String(error) });
   }
 };
 
@@ -62,13 +67,14 @@ export const getBanners = async (req: Request, res: Response) => {
     const banners = await prisma.banner.findMany({ orderBy: { ThuTu: 'asc' } });
     res.json(banners);
   } catch (error) {
-    res.status(500).json({ error: (error as Error).message });
+    console.error('Server error:', error);
+    res.status(500).json({ errorCode: 'ERR_500', message: 'An unknown error occurred. Please contact support.', details: error instanceof Error ? error.message : String(error) });
   }
 };
 
 export const createBanner = async (req: Request, res: Response) => {
   try {
-    const { TieuDe, HinhAnh, LinkURL, ViTri, TrangThai, ThuTu } = req.body;
+    const { TieuDe, HinhAnh, LinkURL, ViTri, TrangThai, ThuTu, Tag, MoTa, ThoiGianKetThuc, VanBanNut } = req.body;
     const banner = await prisma.banner.create({
       data: {
         TieuDe,
@@ -76,12 +82,17 @@ export const createBanner = async (req: Request, res: Response) => {
         LinkURL,
         ViTri,
         TrangThai: TrangThai || 'Đang hiển thị',
-        ThuTu: ThuTu !== undefined ? Number(ThuTu) : 0
+        ThuTu: ThuTu !== undefined ? Number(ThuTu) : 0,
+        Tag,
+        MoTa,
+        ThoiGianKetThuc: ThoiGianKetThuc ? new Date(ThoiGianKetThuc) : null,
+        VanBanNut
       }
     });
     res.status(201).json(banner);
   } catch (error) {
-    res.status(500).json({ error: (error as Error).message });
+    console.error('Server error:', error);
+    res.status(500).json({ errorCode: 'ERR_500', message: 'An unknown error occurred. Please contact support.', details: error instanceof Error ? error.message : String(error) });
   }
 };
 
@@ -92,13 +103,17 @@ export const updateBanner = async (req: Request, res: Response) => {
     if (updateData.ThuTu !== undefined) {
       updateData.ThuTu = Number(updateData.ThuTu);
     }
+    if (updateData.ThoiGianKetThuc !== undefined) {
+      updateData.ThoiGianKetThuc = updateData.ThoiGianKetThuc ? new Date(updateData.ThoiGianKetThuc) : null;
+    }
     const banner = await prisma.banner.update({
       where: { MaBanner: Number(id) },
       data: updateData
     });
     res.json(banner);
   } catch (error) {
-    res.status(500).json({ error: (error as Error).message });
+    console.error('Server error:', error);
+    res.status(500).json({ errorCode: 'ERR_500', message: 'An unknown error occurred. Please contact support.', details: error instanceof Error ? error.message : String(error) });
   }
 };
 
@@ -106,9 +121,10 @@ export const deleteBanner = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     await prisma.banner.delete({ where: { MaBanner: Number(id) } });
-    res.json({ message: 'Đã xóa' });
+    res.json({ message: 'Deleted successfully' });
   } catch (error) {
-    res.status(500).json({ error: (error as Error).message });
+    console.error('Server error:', error);
+    res.status(500).json({ errorCode: 'ERR_500', message: 'An unknown error occurred. Please contact support.', details: error instanceof Error ? error.message : String(error) });
   }
 };
 
@@ -118,7 +134,8 @@ export const getBaiViets = async (req: Request, res: Response) => {
     const baiViets = await prisma.baiViet.findMany({ orderBy: { NgayTao: 'desc' } });
     res.json(baiViets);
   } catch (error) {
-    res.status(500).json({ error: (error as Error).message });
+    console.error('Server error:', error);
+    res.status(500).json({ errorCode: 'ERR_500', message: 'An unknown error occurred. Please contact support.', details: error instanceof Error ? error.message : String(error) });
   }
 };
 
@@ -136,7 +153,8 @@ export const createBaiViet = async (req: Request, res: Response) => {
     });
     res.status(201).json(baiViet);
   } catch (error) {
-    res.status(500).json({ error: (error as Error).message });
+    console.error('Server error:', error);
+    res.status(500).json({ errorCode: 'ERR_500', message: 'An unknown error occurred. Please contact support.', details: error instanceof Error ? error.message : String(error) });
   }
 };
 
@@ -153,7 +171,8 @@ export const updateBaiViet = async (req: Request, res: Response) => {
     });
     res.json(baiViet);
   } catch (error) {
-    res.status(500).json({ error: (error as Error).message });
+    console.error('Server error:', error);
+    res.status(500).json({ errorCode: 'ERR_500', message: 'An unknown error occurred. Please contact support.', details: error instanceof Error ? error.message : String(error) });
   }
 };
 
@@ -161,9 +180,24 @@ export const deleteBaiViet = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     await prisma.baiViet.delete({ where: { MaBaiViet: Number(id) } });
-    res.json({ message: 'Đã xóa' });
+    res.json({ message: 'Deleted successfully' });
   } catch (error) {
-    res.status(500).json({ error: (error as Error).message });
+    console.error('Server error:', error);
+    res.status(500).json({ errorCode: 'ERR_500', message: 'An unknown error occurred. Please contact support.', details: error instanceof Error ? error.message : String(error) });
+  }
+};
+
+export const incrementBaiVietView = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const baiViet = await prisma.baiViet.update({
+      where: { MaBaiViet: Number(id) },
+      data: { LuotXem: { increment: 1 } }
+    });
+    res.json({ message: 'View count increased successfully', views: baiViet.LuotXem });
+  } catch (error) {
+    console.error('Server error:', error);
+    res.status(500).json({ errorCode: 'ERR_500', message: 'An unknown error occurred. Please contact support.', details: error instanceof Error ? error.message : String(error) });
   }
 };
 
@@ -171,8 +205,19 @@ export const deleteBaiViet = async (req: Request, res: Response) => {
 export const getCategories = async (req: Request, res: Response) => {
   try {
     const categories = await prisma.danhMuc.findMany({
+      where: {
+        NOT: { MoTa: { contains: '"isDeleted":true' } }
+      },
       include: {
-        Vouchers: true
+        _count: {
+          select: { Vouchers: true }
+        },
+        Vouchers: {
+          where: {
+            TrangThaiVoucher: VOUCHER_STATUS.ACTIVE
+          },
+          select: { VoucherID: true }
+        }
       }
     });
     const mapped = categories.map(c => {
@@ -187,20 +232,23 @@ export const getCategories = async (req: Request, res: Response) => {
           }
         }
       } catch (e) {
+        console.error('Server error:', e);
         console.error('Error parsing category MoTa:', e);
       }
       return {
         id: c.MaDanhMuc,
         name: c.TenDanhMuc,
         moTa: moTa,
-        vouchers: c.Vouchers.length,
+        vouchers: c._count.Vouchers,
+        activeVouchers: c.Vouchers.length,
         icon: icon,
         status: 'Hiển thị'
       };
     });
     res.json(mapped);
   } catch (error) {
-    res.status(500).json({ error: (error as Error).message });
+    console.error('Server error:', error);
+    res.status(500).json({ errorCode: 'ERR_500', message: 'An unknown error occurred. Please contact support.', details: error instanceof Error ? error.message : String(error) });
   }
 };
 
@@ -216,7 +264,8 @@ export const createCategory = async (req: Request, res: Response) => {
     });
     res.status(201).json(category);
   } catch (error) {
-    res.status(500).json({ error: (error as Error).message });
+    console.error('Server error:', error);
+    res.status(500).json({ errorCode: 'ERR_500', message: 'An unknown error occurred. Please contact support.', details: error instanceof Error ? error.message : String(error) });
   }
 };
 
@@ -234,22 +283,52 @@ export const updateCategory = async (req: Request, res: Response) => {
     });
     res.json(category);
   } catch (error) {
-    res.status(500).json({ error: (error as Error).message });
+    console.error('Server error:', error);
+    res.status(500).json({ errorCode: 'ERR_500', message: 'An unknown error occurred. Please contact support.', details: error instanceof Error ? error.message : String(error) });
   }
 };
 
 export const deleteCategory = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const count = await prisma.voucher.count({
-      where: { MaDanhMuc: Number(id) }
+    const activeCount = await prisma.voucher.count({
+      where: {
+        MaDanhMuc: Number(id),
+        OR: [
+          { TrangThaiVoucher: VOUCHER_STATUS.ACTIVE },
+          {
+            TrangThaiVoucher: VOUCHER_STATUS.PAUSED,
+            ThoiGianKetThuc: { gt: new Date() }
+          }
+        ]
+      }
     });
-    if (count > 0) {
-      return res.status(400).json({ error: 'Không thể xóa danh mục này vì đang có voucher thuộc danh mục.' });
+    if (activeCount > 0) {
+      return res.status(400).json({ error: 'Không thể xóa danh mục này vì đang có voucher hoạt động.' });
     }
-    await prisma.danhMuc.delete({ where: { MaDanhMuc: Number(id) } });
-    res.json({ message: 'Đã xóa danh mục' });
+
+    const category = await prisma.danhMuc.findUnique({ where: { MaDanhMuc: Number(id) } });
+    if (!category) return res.status(404).json({ error: 'Không tìm thấy danh mục' });
+
+    let moTaObj: any = { icon: 'Tag', text: '' };
+    try {
+      if (category.MoTa && category.MoTa.startsWith('{')) {
+        moTaObj = JSON.parse(category.MoTa);
+      } else {
+        moTaObj.text = category.MoTa || '';
+      }
+    } catch (e) { }
+
+    moTaObj.isDeleted = true;
+
+    await prisma.danhMuc.update({
+      where: { MaDanhMuc: Number(id) },
+      data: { MoTa: JSON.stringify(moTaObj) }
+    });
+
+    res.json({ message: 'Category deleted successfully' });
   } catch (error) {
-    res.status(500).json({ error: (error as Error).message });
+    console.error('Server error:', error);
+    res.status(500).json({ errorCode: 'ERR_500', message: 'An unknown error occurred. Please contact support.', details: error instanceof Error ? error.message : String(error) });
   }
 };

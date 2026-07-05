@@ -1,21 +1,53 @@
 import { VoucherCard, Voucher } from "../components/VoucherCard";
 import { useState, useEffect, } from "react";
 import { useSearchParams, Link } from "react-router";
-import { ChevronDown, Grid3x3, List, X, ChevronRight } from "lucide-react";
-import { Button, Input } from "@voucherhub/ui";
+import { ChevronDown, Grid3x3, List, X, ChevronRight, ChevronLeft } from "lucide-react";
+import { Button, Input, Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from "@voucherhub/ui";
+import Autoplay from "embla-carousel-autoplay";
 import { PriceRangeSlider } from "../components/PriceRangeSlider";
 import { useLanguage } from "../../shared/contexts/LanguageContext";
 
 
 
+const getCityFromAddress = (address?: string) => {
+  if (!address) return "TP. Hồ Chí Minh";
+  const addr = address.toLowerCase();
+  if (addr.includes("hà nội") || addr.includes("hn")) return "Hà Nội";
+  if (addr.includes("đà nẵng") || addr.includes("dn")) return "Đà Nẵng";
+  return "TP. Hồ Chí Minh";
+};
+
+const getDistrictFromAddress = (address?: string) => {
+  if (!address) return "Khác";
+  const addr = address.toLowerCase();
+  
+  if (addr.includes("quận 1") || addr.includes("q.1") || addr.includes("q1")) return "Quận 1";
+  if (addr.includes("quận 3") || addr.includes("q.3") || addr.includes("q3")) return "Quận 3";
+  if (addr.includes("quận 4") || addr.includes("q.4") || addr.includes("q4")) return "Quận 4";
+  if (addr.includes("quận 5") || addr.includes("q.5") || addr.includes("q5")) return "Quận 5";
+  if (addr.includes("quận 7") || addr.includes("q.7") || addr.includes("q7")) return "Quận 7";
+  if (addr.includes("bình thạnh")) return "Bình Thạnh";
+  if (addr.includes("gò vấp")) return "Gò Vấp";
+  if (addr.includes("bình tân")) return "Bình Tân";
+  if (addr.includes("hoàn kiếm")) return "Hoàn Kiếm";
+  if (addr.includes("đống đa")) return "Đống Đa";
+  if (addr.includes("cầu giấy")) return "Cầu Giấy";
+  if (addr.includes("hải châu")) return "Hải Châu";
+  if (addr.includes("thanh khê")) return "Thanh Khê";
+  
+  return "Khác";
+};
+
 export function SearchResultsPage() {
   const { t } = useLanguage();
   const [searchParams] = useSearchParams();
   
-  const [vouchers, setVouchers] =
-    useState<Voucher[]>([]);
+  const [allVouchers, setAllVouchers] = useState<Voucher[]>([]);
+  const [vouchers, setVouchers] = useState<Voucher[]>([]);
 
   const [categories, setCategories] = useState<any[]>([]);
+  const [categoryBanners, setCategoryBanners] = useState<any[]>([]);
+  const [allCategoryBanners, setAllCategoryBanners] = useState<any[]>([]);
 
   const [sortType, setSortType] =
     useState("popular");
@@ -27,13 +59,27 @@ export function SearchResultsPage() {
   const categoryId = searchParams.get("category");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [isBrandsModalOpen, setIsBrandsModalOpen] = useState(false);
-  const [priceRange, setPriceRange] = useState([10, 1000]);
+  
+  // Dynamic Price Range
+  const [maxVoucherPrice, setMaxVoucherPrice] = useState(2000000);
+  const [priceRange, setPriceRange] = useState([0, 2000000]);
+  
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
-  const [selectedState, setSelectedState] = useState("California (124)");
+
+  // Dynamic Locations Data
+  const [locationsData, setLocationsData] = useState<Record<string, Array<{ name: string; count: number }>>>({
+    "TP. Hồ Chí Minh": [
+      { name: "Quận 1", count: 42 },
+      { name: "Quận 7", count: 28 },
+      { name: "Bình Thạnh", count: 19 },
+    ]
+  });
+  const [selectedState, setSelectedState] = useState("TP. Hồ Chí Minh (89)");
   const [selectedCities, setSelectedCities] = useState<string[]>([]);
   const [selectedRatings, setSelectedRatings] = useState<number[]>([]);
   const [sliderResetKey, setSliderResetKey] = useState(0);
+  const [triggerFilter, setTriggerFilter] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
 
 
@@ -55,190 +101,159 @@ export function SearchResultsPage() {
   const handleClearAll = () => {
     setSelectedCategories([]);
     setSelectedBrands([]);
-    setSelectedState("California (124)");
+    const defaultCity = Object.keys(locationsData)[0] || "TP. Hồ Chí Minh";
+    const defaultCount = (locationsData[defaultCity] || []).reduce((sum, item) => sum + item.count, 0);
+    setSelectedState(`${defaultCity} (${defaultCount})`);
     setSelectedCities([]);
     setSelectedRatings([]);
-    setPriceRange([10, 1000]);
+    setPriceRange([0, maxVoucherPrice]);
     setSliderResetKey(prev => prev + 1);
     setCurrentPage(1);
   };
 
   useEffect(() => {
-    // Reset category name
-    //setCategoryName("");
-
-    // =========================
-    // Lấy keyword search
-    // =========================
-    const query =
-      searchParams.get("q");
-
-    // API mặc định
-    let url =
-      "/api/vouchers";
-
-    // =========================
-    // Search từ navbar
-    // =========================
+    const query = searchParams.get("q");
+    let url = "/api/vouchers";
     if (query) {
-      url =
-        `/api/vouchers/search?q=${encodeURIComponent(
-          query
-        )}`;
+      url = `/api/vouchers/search?q=${encodeURIComponent(query)}`;
     }
-
-    // =========================
-    // Click category
-    // =========================
     if (categoryId) {
-      url =
-        `/api/vouchers?category=${categoryId}`;
+      url = `/api/vouchers?category=${categoryId}`;
     }
 
-    // =========================
-    // Load categories thật
-    // =========================
     fetch("/api/vouchers/categories")
-      .then((res) =>
-        res.json()
-      )
+      .then((res) => res.json())
       .then((categories) => {
-        // Sidebar categories
-        setCategories(
-          categories
-        );
-
-        // Tìm tên category
+        setCategories(categories);
         if (categoryId) {
-          const found =
-            categories.find(
-              (c: any) =>
-                c.id ===
-                Number(
-                  categoryId
-                )
-            );
-
-          if (found) {
-            setCategoryName(
-              found.name
-            );
-          }
+          const found = categories.find((c: any) => c.id === Number(categoryId));
+          if (found) setCategoryName(found.name);
         }
       })
-      .catch((err) =>
-        console.error(
-          "Fetch categories error:",
-          err
-        )
-      );
+      .catch((err) => console.error("Fetch categories error:", err));
 
-    // Reset page
-    setCurrentPage(1);
-
-    // =========================
-    // Fetch vouchers thật
-    // =========================
-    fetch(url)
-      .then((res) =>
-        res.json()
-      )
+    fetch('/api/content/banners')
+      .then((res) => res.json())
       .then((data) => {
-        if (
-          Array.isArray(data)
-        ) {
-          let sortedData = [
-            ...data,
-          ];
-
-          // =====================
-          // Sort giá thấp -> cao
-          // =====================
-          if (
-            sortType ===
-            "low-price"
-          ) {
-            sortedData.sort(
-              (a, b) =>
-                Number(
-                  a.salePrice
-                ) -
-                Number(
-                  b.salePrice
-                )
-            );
-          }
-
-          // =====================
-          // Sort giá cao -> thấp
-          // =====================
-          if (
-            sortType ===
-            "high-price"
-          ) {
-            sortedData.sort(
-              (a, b) =>
-                Number(
-                  b.salePrice
-                ) -
-                Number(
-                  a.salePrice
-                )
-            );
-          }
-
-          // =====================
-          // Voucher mới nhất
-          // =====================
-          if (
-            sortType ===
-            "newest"
-          ) {
-            sortedData.sort(
-              (a, b) =>
-                Number(b.id) -
-                Number(a.id)
-            );
-          }
-
-          // =====================
-          // Lấy partner thật
-          // =====================
-          const uniquePartners =
-            Array.from(
-              new Map(
-                sortedData.map(
-                  (v: any) => [
-                    v.partner?.id,
-                    v.partner,
-                  ]
-                )
-              ).values()
-            ).filter(Boolean);
-
-          setPartners(
-            uniquePartners
-          );
-
-          // =====================
-          // Set vouchers
-          // =====================
-          setVouchers(
-            sortedData
-          );
+        if (Array.isArray(data)) {
+          const active = data
+            .filter((b: any) => b.TrangThai === 'Đang hiển thị' && (b.ViTri === 'Category Page' || b.ViTri === 'category_page'))
+            .sort((a: any, b: any) => a.ThuTu - b.ThuTu);
+          setAllCategoryBanners(active);
         }
       })
-      .catch((err) =>
-        console.error(
-          "Fetch vouchers error:",
-          err
-        )
+      .catch((err) => console.error('Fetch category banners error:', err));
+
+    fetch(url)
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setAllVouchers(data);
+          // Lấy partner thật
+          const uniquePartners = Array.from(
+            new Map(data.map((v: any) => [v.partner?.id, v.partner])).values()
+          ).filter(Boolean);
+          setPartners(uniquePartners);
+
+          // Dynamic Max Price calculation
+          if (data.length > 0) {
+            const prices = data.map((v: any) => v.salePrice || 0);
+            const maxPrice = Math.max(...prices, 100000);
+            const roundedMax = Math.ceil(maxPrice / 100000) * 100000;
+            setMaxVoucherPrice(roundedMax);
+            setPriceRange([0, roundedMax]);
+          }
+        }
+      })
+      .catch((err) => console.error("Fetch vouchers error:", err));
+  }, [categoryId, searchParams]);
+
+  useEffect(() => {
+    // Build locations tree from allVouchers
+    const tree: Record<string, Record<string, number>> = {};
+    
+    allVouchers.forEach(v => {
+      const branches = v.partner?.branches || [];
+      branches.forEach((b: any) => {
+        const city = getCityFromAddress(b.address);
+        const district = getDistrictFromAddress(b.address);
+        
+        if (!tree[city]) tree[city] = {};
+        tree[city][district] = (tree[city][district] || 0) + 1;
+      });
+    });
+    
+    const formatted: Record<string, Array<{ name: string; count: number }>> = {};
+    Object.keys(tree).forEach(city => {
+      formatted[city] = Object.keys(tree[city]).map(district => ({
+        name: district,
+        count: tree[city][district]
+      })).sort((a, b) => b.count - a.count);
+    });
+    
+    if (Object.keys(formatted).length > 0) {
+      setLocationsData(formatted);
+      const cities = Object.keys(formatted);
+      const currentCity = selectedState.split(" (")[0];
+      const activeCity = cities.includes(currentCity) ? currentCity : (cities.find(c => c === "TP. Hồ Chí Minh") || cities[0]);
+      const count = formatted[activeCity].reduce((sum, item) => sum + item.count, 0);
+      setSelectedState(`${activeCity} (${count})`);
+    }
+  }, [allVouchers]);
+
+  useEffect(() => {
+    if (categoryId && categoryName) {
+      const filtered = allCategoryBanners.filter(
+        (b) => !b.Tag || b.Tag.toLowerCase() === categoryName.toLowerCase()
       );
-  }, [
-    categoryId,
-    searchParams,
-    sortType,
-  ]);
+      setCategoryBanners(filtered);
+    } else {
+      setCategoryBanners(allCategoryBanners);
+    }
+  }, [allCategoryBanners, categoryName, categoryId]);
+
+  useEffect(() => {
+    let sortedData = [...allVouchers];
+
+    // Local Filtering
+    if (selectedCategories.length > 0) {
+      sortedData = sortedData.filter(v => v.category && typeof v.category === 'object' && selectedCategories.includes(String(v.category.id)));
+    }
+    if (selectedBrands.length > 0) {
+      sortedData = sortedData.filter(v => v.partner && selectedBrands.includes(String(v.partner.id)));
+    }
+    if (priceRange) {
+      sortedData = sortedData.filter(v => v.salePrice >= priceRange[0] && (priceRange[1] === maxVoucherPrice ? true : v.salePrice <= priceRange[1]));
+    }
+    if (selectedCities.length > 0) {
+      const activeStateName = selectedState.split(" (")[0];
+      sortedData = sortedData.filter(v => {
+        const branches = v.partner?.branches || [];
+        return branches.some((b: any) => {
+          const city = getCityFromAddress(b.address);
+          const district = getDistrictFromAddress(b.address);
+          return city === activeStateName && selectedCities.includes(district);
+        });
+      });
+    }
+    if (selectedRatings.length > 0) {
+      sortedData = sortedData.filter(v => {
+        const rating = Math.floor(v.rating || 0);
+        return selectedRatings.includes(rating);
+      });
+    }
+
+    if (sortType === "low-price") {
+      sortedData.sort((a, b) => Number(a.salePrice) - Number(b.salePrice));
+    } else if (sortType === "high-price") {
+      sortedData.sort((a, b) => Number(b.salePrice) - Number(a.salePrice));
+    } else if (sortType === "newest") {
+      sortedData.sort((a, b) => Number(b.id) - Number(a.id));
+    }
+
+    setCurrentPage(1);
+    setVouchers(sortedData);
+  }, [allVouchers, sortType, triggerFilter, sliderResetKey]);
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -274,6 +289,47 @@ export function SearchResultsPage() {
         </p>
 
 
+
+        {categoryBanners.length > 0 && (
+          <div className="mb-8 w-full max-h-[300px] rounded-2xl overflow-hidden relative">
+            <Carousel opts={{ loop: true }} plugins={[Autoplay({ delay: 5000 })]}>
+              <CarouselContent>
+                {categoryBanners.map((banner, idx) => (
+                  <CarouselItem key={banner.MaBanner || idx}>
+                    <div 
+                      className="w-full relative cursor-pointer"
+                      onClick={() => {
+                        const target = banner?.LinkURL || '/search';
+                        if (target.startsWith('http://') || target.startsWith('https://')) {
+                          window.open(target, '_blank');
+                        } else {
+                          window.location.href = target;
+                        }
+                      }}
+                    >
+                      <img
+                        src={banner.HinhAnh}
+                        alt={banner.TieuDe || "Category Banner"}
+                        className="w-full h-[200px] md:h-[300px] object-cover"
+                      />
+                      {banner.TieuDe && (
+                        <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                          <h3 className="text-white text-3xl font-bold px-4 text-center">{banner.TieuDe}</h3>
+                        </div>
+                      )}
+                    </div>
+                  </CarouselItem>
+                ))}
+              </CarouselContent>
+              {categoryBanners.length > 1 && (
+                <>
+                  <CarouselPrevious className="left-4 bg-white" />
+                  <CarouselNext className="right-4 bg-white" />
+                </>
+              )}
+            </Carousel>
+          </div>
+        )}
 
         {/* Sort Bar */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8 pb-4 border-b border-border">
@@ -504,19 +560,18 @@ export function SearchResultsPage() {
                 <select 
                   className="w-full px-3 py-2 bg-input-background rounded-lg border border-border text-sm"
                   value={selectedState}
-                  onChange={(e) => setSelectedState(e.target.value)}
+                  onChange={(e) => {
+                    setSelectedState(e.target.value);
+                    setSelectedCities([]);
+                  }}
                 >
-                  <option>California (124)</option>
-                  <option>New York (98)</option>
-                  <option>Florida (67)</option>
-                  <option>Texas (54)</option>
+                  {Object.keys(locationsData).map(city => {
+                    const count = locationsData[city].reduce((sum, item) => sum + item.count, 0);
+                    return <option key={city} value={`${city} (${count})`}>{city} ({count})</option>;
+                  })}
                 </select>
                 <div className="space-y-2 mt-3 ml-4">
-                  {[
-                    { name: "Miami", count: 42 },
-                    { name: "Orlando", count: 28 },
-                    { name: "Tampa", count: 19 },
-                  ].map((city) => (
+                  {(locationsData[selectedState.split(" (")[0]] || []).map((city) => (
                     <label key={city.name} className="flex items-center gap-2 cursor-pointer">
                       <input 
                         type="checkbox" 
@@ -540,19 +595,19 @@ export function SearchResultsPage() {
                 <div className="px-2">
                   <PriceRangeSlider 
                     key={sliderResetKey}
-                    min={10} 
-                    max={1000} 
+                    min={0} 
+                    max={maxVoucherPrice} 
                     value={priceRange}
                     onChange={(min, max) => setPriceRange([min, max])} 
                   />
                 </div>
-                <div className="flex justify-between items-center text-xs text-muted-foreground mt-2">
-                  <span>$10</span>
-                  <span className="font-semibold text-foreground text-sm">
-                    ${priceRange[0]} - ${priceRange[1]}{priceRange[1] === 1000 ? '+' : ''}
-                  </span>
-                  <span>$1000+</span>
-                </div>
+                  <div className="flex justify-between text-xs text-muted-foreground mt-2 px-1">
+                    <span>0đ</span>
+                    <span className="font-semibold text-foreground text-sm">
+                      {priceRange[0].toLocaleString("vi-VN")}đ - {priceRange[1].toLocaleString("vi-VN")}đ{priceRange[1] >= maxVoucherPrice ? '+' : ''}
+                    </span>
+                    <span>{maxVoucherPrice.toLocaleString("vi-VN")}đ+</span>
+                  </div>
               </div>
 
               {/* Rating */}
@@ -583,7 +638,7 @@ export function SearchResultsPage() {
               </div>
 
               {/* Filter Button */}
-              <Button className="w-full bg-primary text-primary-foreground font-semibold py-6 hover:opacity-90 transition-colors">
+              <Button onClick={() => setTriggerFilter(prev => prev + 1)} className="w-full bg-primary text-primary-foreground font-semibold py-6 hover:opacity-90 transition-colors">
                 {t('search.apply_filters')}
               </Button>
             </div>
@@ -617,6 +672,46 @@ export function SearchResultsPage() {
               </div>
             )}
 
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex justify-center items-center gap-2 mt-8 pb-4">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                  disabled={currentPage === 1}
+                  className="w-10 h-10 flex items-center justify-center rounded-lg border border-border bg-white cursor-pointer disabled:opacity-50"
+                >
+                  <ChevronLeft className="w-5 h-5 text-foreground" />
+                </Button>
+                
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                  <Button
+                    key={page}
+                    variant={currentPage === page ? "default" : "outline"}
+                    onClick={() => setCurrentPage(page)}
+                    className={`w-10 h-10 flex items-center justify-center font-bold rounded-lg border cursor-pointer ${
+                      currentPage === page
+                        ? "bg-primary text-primary-foreground border-primary hover:opacity-90"
+                        : "bg-white text-foreground border-border hover:bg-accent"
+                    }`}
+                  >
+                    {page}
+                  </Button>
+                ))}
+                
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                  disabled={currentPage === totalPages}
+                  className="w-10 h-10 flex items-center justify-center rounded-lg border border-border bg-white cursor-pointer disabled:opacity-50"
+                >
+                  <ChevronRight className="w-5 h-5 text-foreground" />
+                </Button>
+              </div>
+            )}
+
           </div>
         </div>
 
@@ -644,7 +739,7 @@ export function SearchResultsPage() {
               </div>
               <div className="mt-6 pt-4 border-t border-border flex justify-end gap-2">
                 <Button variant="outline" onClick={() => setIsBrandsModalOpen(false)}>{t('common.cancel')}</Button>
-                <Button onClick={() => setIsBrandsModalOpen(false)} className="bg-primary text-primary-foreground font-semibold">{t('search.apply_filters')}</Button>
+                <Button onClick={() => { setTriggerFilter(prev => prev + 1); setIsBrandsModalOpen(false); }} className="bg-primary text-primary-foreground font-semibold">{t('search.apply_filters')}</Button>
               </div>
             </div>
           </div>
