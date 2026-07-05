@@ -193,7 +193,7 @@ export class VoucherService {
             }
           }
         }
-      } as any
+      }
     });
 
     if (!maVoucher || !maVoucher.ChiTietDonHang || !maVoucher.ChiTietDonHang.Voucher) {
@@ -215,9 +215,9 @@ export class VoucherService {
     let status = 'valid';
     if (maVoucher.TrangThaiSuDung === 'Hủy voucher') {
       status = 'refunded';
-    } else if (maVoucher.TrangThaiSuDung === VOUCHER_USAGE_STATUS.USED) {
+    } else if (maVoucher.TrangThaiSuDung === VOUCHER_USAGE_STATUS.USED || maVoucher.TrangThaiSuDung === 'USED') {
       status = 'used';
-    } else if (voucher.ThoiGianKetThuc < new Date() || maVoucher.TrangThaiSuDung === VOUCHER_USAGE_STATUS.EXPIRED) {
+    } else if (voucher.ThoiGianKetThuc < new Date() || maVoucher.TrangThaiSuDung === VOUCHER_USAGE_STATUS.EXPIRED || maVoucher.TrangThaiSuDung === 'EXPIRED') {
       status = 'expired';
     }
 
@@ -233,7 +233,7 @@ export class VoucherService {
       validUntil: voucher.ThoiGianKetThuc.toISOString(),
       status: status,
       usedDate: maVoucher.ThoiDiemSuDung?.toISOString(),
-      branch: (maVoucher as any).ChiNhanh?.TenChiNhanh || 'Tất cả chi nhánh'
+      branch: maVoucher.ChiNhanh?.TenChiNhanh || 'Tất cả chi nhánh'
     };
   }
 
@@ -298,22 +298,26 @@ export class VoucherService {
             Voucher: true,
             DonHang: {
               include: {
-                TaiKhoan: true
+                TaiKhoan: {
+                  include: {
+                    KhachHang: true
+                  }
+                }
               }
             }
           }
         }
-      } as any
+      }
     });
 
     return usedVouchers.map(mv => ({
       code: mv.SoMaVoucher,
       voucherName: mv.ChiTietDonHang?.Voucher?.TenVoucher || 'Không xác định',
       time: mv.ThoiDiemSuDung?.toISOString(),
-      status: 'verified', // If it's in this list, it was successfully verified and used
-      branch: (mv as any).ChiNhanh?.TenChiNhanh || 'Tất cả chi nhánh',
-      orderId: mv.ChiTietDonHang?.DonHang?.MaDonHang,
-      customerName: mv.ChiTietDonHang?.DonHang?.TaiKhoan?.HoTenNguoiDung || mv.ChiTietDonHang?.DonHang?.TaiKhoan?.HoTen || mv.ChiTietDonHang?.DonHang?.TaiKhoan?.TenDangNhap || 'Khách hàng'
+      status: 'verified',
+      branch: mv.ChiNhanh?.TenChiNhanh || 'Tất cả chi nhánh',
+      orderId: mv.ChiTietDonHang?.DonHang?.MaDonHang || null,
+      customerName: mv.ChiTietDonHang?.DonHang?.TaiKhoan?.HoTenNguoiDung || 'Khách hàng ẩn danh'
     }));
   }
 }

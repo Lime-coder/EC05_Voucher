@@ -310,14 +310,23 @@ export const getPartnerBranchStats = async (req: Request, res: Response, next: N
 
       if (targetBranches.length === 0) return;
 
-      // Tính toán mã băm dựa trên chuỗi SoMaVoucher để chọn chi nhánh một cách nhất quán
-      let hash = 0;
-      const codeStr = code.SoMaVoucher;
-      for (let i = 0; i < codeStr.length; i++) {
-        hash += codeStr.charCodeAt(i);
+      // Xác định chi nhánh cho mã voucher
+      let assignedBranchId: number | undefined;
+
+      const isUsed = code.TrangThaiSuDung === VOUCHER_USAGE_STATUS.USED || code.TrangThaiSuDung === 'USED';
+
+      if (isUsed && code.MaChiNhanhSuDung) {
+        assignedBranchId = code.MaChiNhanhSuDung;
+      } else {
+        // Tính toán mã băm dựa trên chuỗi SoMaVoucher để phân bổ mã chưa sử dụng
+        let hash = 0;
+        const codeStr = code.SoMaVoucher;
+        for (let i = 0; i < codeStr.length; i++) {
+          hash += codeStr.charCodeAt(i);
+        }
+        const branchIndex = hash % targetBranches.length;
+        assignedBranchId = targetBranches[branchIndex].MaChiNhanh;
       }
-      const branchIndex = hash % targetBranches.length;
-      const assignedBranchId = targetBranches[branchIndex].MaChiNhanh;
 
       if (!assignedBranchId || !statsMap[assignedBranchId]) return;
 
@@ -337,7 +346,8 @@ export const getPartnerBranchStats = async (req: Request, res: Response, next: N
       }
 
       branchStats.vouchers[voucher.VoucherID].soldCount++;
-      if (code.TrangThaiSuDung === VOUCHER_USAGE_STATUS.USED) {
+      const isUsedAgain = code.TrangThaiSuDung === VOUCHER_USAGE_STATUS.USED || code.TrangThaiSuDung === 'USED';
+      if (isUsedAgain) {
         branchStats.vouchers[voucher.VoucherID].usedCount++;
       }
     });
